@@ -13,6 +13,8 @@ import {
   PencilIcon,
   MoreVertical,
   MoreVerticalIcon,
+  Share2Icon,
+  CopyIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -21,6 +23,7 @@ import {
   DropdownMenuContent,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface Props {
   meetingId: string;
@@ -35,6 +38,17 @@ export const MeetingIdViewHeader = ({
   onEdit,
   onRemove,
 }: Props) => {
+  const onCopyInvite = () => {
+    const url = `${window.location.origin}/call/${meetingId}`;
+    navigator.clipboard.writeText(url);
+    toast.success("Invite link copied to clipboard!");
+  };
+
+  const onCopyId = () => {
+    navigator.clipboard.writeText(meetingId);
+    toast.success("Meeting ID copied to clipboard!");
+  };
+
   return (
     <>
       <div className="flex items-center justify-between">
@@ -61,23 +75,42 @@ export const MeetingIdViewHeader = ({
           </BreadcrumbList>
         </Breadcrumb>
         {/* without modal false,  the dialog that this dropdown opens cause the website to get stuck*/}
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button variant={"ghost"}>
-              <MoreVerticalIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEdit}>
-              <PencilIcon className="size-4 text-black" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onRemove}>
-              <TrashIcon className="size-4 text-black" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden md:flex items-center gap-2"
+            onClick={onCopyInvite}
+          >
+            <Share2Icon className="size-4" />
+            Invite Others
+          </Button>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button variant={"ghost"}>
+                <MoreVerticalIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onCopyInvite} className="md:hidden">
+                <Share2Icon className="size-4 text-black" />
+                Copy Invite Link
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onCopyId}>
+                <CopyIcon className="size-4 text-black" />
+                Copy Meeting ID
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onEdit}>
+                <PencilIcon className="size-4 text-black" />
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onRemove}>
+                <TrashIcon className="size-4 text-black" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </>
   );

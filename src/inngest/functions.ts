@@ -18,35 +18,46 @@ const inngest = new Inngest({
 const summarizer = createAgent({
   name: "summarizer",
   system: `
-  You are an expert summarizer specializing in educational content. Your task is to read a transcript of a Zoom conversation between a human student and an AI tutor. The sessions are typically tutorial-style lessons focused on middle school (SMP) and high school (SMA) subjects, including math, science, language, and more.
+  You are an expert summarizer and educational content creator. Your task is to process a transcript of a study session between a human student and an AI tutor.
 
-Your summary should be clear, student-friendly, and easy to read. Avoid jargon or overly technical language unless it was discussed explicitly in the transcript. Keep the tone supportive and informative.
+  You must generate three things:
+  1. A comprehensive summary of the session.
+  2. A 3-question quiz (multiple choice) based on the topics covered.
+  3. A personalized learning path (next steps).
 
-Use the following markdown structure for every output:
+  Response Format:
+  You MUST respond in valid JSON format with the following structure:
+  {
+    "summary": "Markdown string here",
+    "quiz": [
+      {
+        "question": "string",
+        "options": ["a", "b", "c", "d"],
+        "correctAnswer": "index of correct option (0-3)"
+      }
+    ],
+    "learningPath": [
+      {
+        "title": "string",
+        "description": "string"
+      }
+    ]
+  }
 
-### Overview
-Provide a detailed, engaging summary of the session's content. Focus on major features, user workflows, and any key takeaways. Write in a narrative style, using full sentences. Highlight unique or powerful aspects of the product, platform, or discussion.
+  For the summary:
+  Use markdown. Include ### Overview and ### Notes sections.
 
-### Notes
-Break down key content into thematic sections with timestamp ranges. Each section should summarize key points, actions, or demos in bullet format.
+  For the quiz:
+  Make it challenging but fair based on the transcript.
 
-Example:
-#### Section Name
-- Main point or demo shown here
-- Another key insight or interaction
-- Follow-up tool or explanation provided
-
-#### Next Section
-- Feature X automatically does Y
-- Mention of integration with Z
-
+  For the learning path:
+  Suggest 3 specific topics or exercises the student should do next.
 `.trim(),
   model: openai({ model: "gpt-4o", apiKey: process.env.OPENAI_API_KEY }),
 });
 
 const meetingsProcessing = inngest.createFunction(
-  { id: "meetings/processing" },
-  { event: "meetings/processing" },
+  { id: "meetings/processing", triggers: [{ event: "meetings/processing" }] },
   async ({ event, step }) => {
     const transcriptUrl = event.data.transcript_url;
     if (!transcriptUrl) {
@@ -93,15 +104,24 @@ const meetingsProcessing = inngest.createFunction(
     });
 
     const { output } = await summarizer.run(
-      "Summarize the following transcript: " +
+      "Process the following transcript and return JSON as requested: " +
         JSON.stringify(transcriptWithSpeakers),
     );
 
-    await step.run("save-summary", async () => {
+    const result = await step.run("parse-ai-output", async () => {
+      const content = (output[0] as TextMessage).content as string;
+      // Extract JSON if AI wrapped it in markdown code blocks
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      return JSON.parse(jsonMatch ? jsonMatch[0] : content);
+    });
+
+    await step.run("save-results", async () => {
       await db
         .update(meetings)
         .set({
-          summary: (output[0] as TextMessage).content as string,
+          summary: result.summary,
+          quiz: JSON.stringify(result.quiz),
+          learningPath: JSON.stringify(result.learningPath),
           status: "completed",
         })
         .where(eq(meetings.id, event.data.meeting_id));
@@ -112,8 +132,7 @@ const meetingsProcessing = inngest.createFunction(
 // Add this at the top of functions.ts to track active polling
 const activePolling = new Set<string>();
 const pollAgentPrompt = inngest.createFunction(
-  { id: "poll-agent-prompt" },
-  { event: "agent/prompt.poll" },
+  { id: "poll-agent-prompt", triggers: [{ event: "agent/prompt.poll" }] },
   async ({ event, step }) => {
     console.log("🎯 [INNGEST] pollAgentPrompt started with data:", event.data);
     

@@ -24,7 +24,13 @@ const ExcalidrawWrapper = dynamic(
   },
 );
 
-export const CallUI = ({ meetingName }: { meetingName: string }) => {
+export const CallUI = ({
+  meetingName,
+  agentId,
+}: {
+  meetingName: string;
+  agentId: string;
+}) => {
   const call = useCall();
   const { useCallCallingState } = useCallStateHooks();
   const callingState = useCallCallingState();
@@ -94,6 +100,7 @@ export const CallUI = ({ meetingName }: { meetingName: string }) => {
               meetingName={meetingName}
               onWhiteboardToggle={handleWhiteboardToggle}
               isWhiteboardOpen={isWhiteboardOpen}
+              agentId={agentId}
             />
           </div>
 
@@ -113,6 +120,7 @@ export const CallUI = ({ meetingName }: { meetingName: string }) => {
                   // ...other props
                   onChange={handleExcalidrawChange}
                   meetingId={call?.id || ""}
+                  agentId={agentId}
                 />
               </div>
               {/* Close Button */}

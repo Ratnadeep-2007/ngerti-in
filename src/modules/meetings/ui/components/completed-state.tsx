@@ -10,6 +10,10 @@ import {
   FileTextIcon,
   FileVideoIcon,
   ClockFadingIcon,
+  ListChecksIcon,
+  MapIcon,
+  CheckCircle2Icon,
+  CircleIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { GeneratedAvatar } from "@/components/generated-avatar";
@@ -18,12 +22,24 @@ import { formatDuration } from "@/lib/utils";
 import { format } from "date-fns";
 import { Transcript } from "./transcript";
 import { ChatProvider } from "./chat-provider";
+import { Button } from "@/components/ui/button";
 
 interface CompletedStateProps {
   data: MeetingGetOne;
 }
 
 export const CompletedState = ({ data }: CompletedStateProps) => {
+  const quiz = data.quiz ? JSON.parse(data.quiz) : null;
+  const learningPath = data.learningPath ? JSON.parse(data.learningPath) : null;
+  const [selectedOptions, setSelectedOptions] = React.useState<number[]>([]);
+  const [showResults, setShowResults] = React.useState(false);
+
+  const handleOptionSelect = (questionIndex: number, optionIndex: number) => {
+    const newSelected = [...selectedOptions];
+    newSelected[questionIndex] = optionIndex;
+    setSelectedOptions(newSelected);
+  };
+
   return (
     <>
       <div className="flex flex-col gap-y-4">
@@ -37,6 +53,20 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                 >
                   <BookOpenTextIcon />
                   Summary
+                </TabsTrigger>
+                <TabsTrigger
+                  value="quiz"
+                  className="text-muted-foreground rounded-none bg-background data-[state=active]:shadow-none border-b-2 border-transparent data-[state-active]:border-b-primary data-[state-active]:text-accent-foreground h-full hover:text-accent-foreground"
+                >
+                  <ListChecksIcon />
+                  Quiz
+                </TabsTrigger>
+                <TabsTrigger
+                  value="path"
+                  className="text-muted-foreground rounded-none bg-background data-[state=active]:shadow-none border-b-2 border-transparent data-[state-active]:border-b-primary data-[state-active]:text-accent-foreground h-full hover:text-accent-foreground"
+                >
+                  <MapIcon />
+                  Next Steps
                 </TabsTrigger>
                 <TabsTrigger
                   value="transcript"
@@ -76,6 +106,116 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
           </TabsContent>
           <TabsContent value="transcript">
             <Transcript meetingId={data.id} />
+          </TabsContent>
+          <TabsContent value="path">
+            <div className="bg-white rounded-lg border p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-2 text-xl font-bold text-emerald-600">
+                <MapIcon className="size-6" />
+                <h2>Personalized Learning Path</h2>
+              </div>
+              <p className="text-muted-foreground">
+                Based on your session, here are the recommended next steps to
+                master this topic:
+              </p>
+              <div className="grid gap-4 mt-2">
+                {learningPath?.map((step: any, i: number) => (
+                  <div
+                    key={i}
+                    className="flex gap-4 p-4 rounded-xl border bg-emerald-50/30 border-emerald-100 hover:border-emerald-200 transition-colors"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-emerald-900">
+                        {step.title}
+                      </h3>
+                      <p className="text-emerald-800/70 text-sm">
+                        {step.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+          <TabsContent value="quiz">
+            <div className="bg-white rounded-lg border p-6 flex flex-col gap-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 text-xl font-bold text-blue-600">
+                  <ListChecksIcon className="size-6" />
+                  <h2>Knowledge Check</h2>
+                </div>
+                {showResults && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowResults(false);
+                      setSelectedOptions([]);
+                    }}
+                  >
+                    Retry Quiz
+                  </Button>
+                )}
+              </div>
+
+              {!quiz ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  No quiz available for this session.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-8">
+                  {quiz.map((q: any, i: number) => (
+                    <div key={i} className="flex flex-col gap-4">
+                      <h3 className="text-lg font-semibold flex gap-2">
+                        <span className="text-blue-500">{i + 1}.</span>
+                        {q.question}
+                      </h3>
+                      <div className="grid gap-2">
+                        {q.options.map((option: string, oi: number) => {
+                          const isSelected = selectedOptions[i] === oi;
+                          const isCorrect = q.correctAnswer === oi;
+                          const showCorrect = showResults && isCorrect;
+                          const showWrong = showResults && isSelected && !isCorrect;
+
+                          return (
+                            <button
+                              key={oi}
+                              disabled={showResults}
+                              onClick={() => handleOptionSelect(i, oi)}
+                              className={`
+                                flex items-center justify-between p-4 rounded-xl border text-left transition-all
+                                ${isSelected ? "border-blue-500 bg-blue-50" : "border-gray-100 hover:border-gray-200"}
+                                ${showCorrect ? "border-emerald-500 bg-emerald-50 text-emerald-900" : ""}
+                                ${showWrong ? "border-red-500 bg-red-50 text-red-900" : ""}
+                              `}
+                            >
+                              <span>{option}</span>
+                              {showCorrect && (
+                                <CheckCircle2Icon className="size-5 text-emerald-600" />
+                              )}
+                              {showWrong && (
+                                <CircleIcon className="size-5 text-red-600" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {!showResults && (
+                    <Button
+                      className="mt-4 bg-blue-600 hover:bg-blue-700 h-12 text-lg"
+                      onClick={() => setShowResults(true)}
+                      disabled={selectedOptions.length < quiz.length}
+                    >
+                      Check Answers
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
           </TabsContent>
           <TabsContent value="summary">
             <div className="bg-white rounded-lg border">

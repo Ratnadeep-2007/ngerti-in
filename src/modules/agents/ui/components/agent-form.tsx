@@ -88,6 +88,7 @@ export const AgentForm = ({
       name: initialValues?.name || "",
       subject: initialValues?.subject || "Math",
       prompt: initialValues?.prompt || "",
+      language: initialValues?.language || "Standard",
     },
   });
   //   const [showCustomSubject, setShowCustomSubject] = useState(
@@ -159,6 +160,33 @@ export const AgentForm = ({
                     </SelectItem>
                     <SelectItem value="English">English</SelectItem>
                     <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            name="language"
+            control={form.control}
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Language/Dialect</FormLabel>
+                <Select
+                  defaultValue={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a dialect" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="Standard">Standard (Formal)</SelectItem>
+                    <SelectItem value="Javanese">Javanese Dialect</SelectItem>
+                    <SelectItem value="Sundanese">Sundanese Dialect</SelectItem>
+                    <SelectItem value="Slang">Youth Slang (Bahasa Gaul)</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />

@@ -94,6 +94,7 @@ export const agents = pgTable("agents", {
   name: text("name").notNull(),
   // description: text("description"), // Optional, e.g., "Math tutor for high school"
   subject: mataPelajaran("subject").notNull(), // Enum from mataPelajaran
+  language: text("language").notNull().default("Standard"), // e.g., "Standard", "Javanese", "Sundanese"
   prompt: text("prompt").notNull(), // The instruction / behavior guide for the agent
   userId: text("user_id")
     .notNull()
@@ -131,6 +132,8 @@ export const meetings = pgTable("meetings", {
   transcriptUrl: text("transcript_url"),
   recordingUrl: text("recording_url"),
   summary: text("summary"),
+  quiz: text("quiz"), // JSON string of quiz questions
+  learningPath: text("learning_path"), // JSON string of recommended next steps
   createdAt: timestamp("created_at")
     .$defaultFn(() => /* @__PURE__ */ new Date())
     .notNull(),

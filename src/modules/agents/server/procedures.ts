@@ -135,9 +135,9 @@ export const agentsRouter = createTRPCRouter({
   create: protectedProcedure
     .input(agentsInsertSchema)
     .mutation(async ({ input, ctx }) => {
-      const { name, subject, prompt } = input;
+      const { name, subject, prompt, language } = input;
 
-      const resolvedPrompt = agentPrompts[subject as keyof typeof agentPrompts];
+      let resolvedPrompt = agentPrompts[subject as keyof typeof agentPrompts];
       if (!resolvedPrompt) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -145,11 +145,16 @@ export const agentsRouter = createTRPCRouter({
         });
       }
 
+      if (language && language !== "Standard") {
+        resolvedPrompt = `${resolvedPrompt}\n\nIMPORTANT: You must speak and explain everything in the ${language} dialect/language. Use its unique vocabulary, slang, and cultural context where appropriate to make the student feel comfortable.`;
+      }
+
       const [createdAgent] = await db
         .insert(agents)
         .values({
           name,
           subject,
+          language,
           prompt: resolvedPrompt,
           userId: ctx.userId.user.id, // should be user_id in your schema
           // description, // only if this column exists

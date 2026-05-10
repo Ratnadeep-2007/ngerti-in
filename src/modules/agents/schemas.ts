@@ -11,6 +11,7 @@ export const agentsInsertSchema = z.object({
     "English",
   ]),
   prompt: z.string().optional(),
+  language: z.string(),
   // Remove customSubject and prompt if not needed
 });
 

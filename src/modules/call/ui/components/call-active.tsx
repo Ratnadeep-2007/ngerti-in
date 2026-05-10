@@ -12,24 +12,60 @@ import {
   Monitor,
   MonitorOff,
   Palette,
+  Frown,
 } from "lucide-react";
 // import { useState } from "react";
+import { useTRPC } from "@/trpc/client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 interface CallActiveProps {
   meetingName: string;
   onWhiteboardToggle?: () => void;
   isWhiteboardOpen?: boolean;
+  agentId?: string;
 }
 
 export const CallActive = ({
   meetingName,
   onWhiteboardToggle,
   isWhiteboardOpen,
+  agentId,
 }: CallActiveProps) => {
   const call = useCall();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { mutateAsync: updateAgent } = useMutation(
+    trpc.agents.update.mutationOptions(),
+  );
+
   const { useMicrophoneState, useScreenShareState } = useCallStateHooks();
   const { microphone, isMute } = useMicrophoneState();
   // const { screenShare, isScreenShareOn } = useScreenShareState();
+
+  const handleConfused = async () => {
+    if (!agentId) return;
+
+    try {
+      const agent = await queryClient.fetchQuery(
+        trpc.agents.getOne.queryOptions({ id: agentId }),
+      );
+      const newPrompt = `${agent.prompt}\n\n[CONTEXT: The student just clicked the 'I am confused' button. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way.]`;
+
+      await updateAgent({
+        id: agentId,
+        name: agent.name,
+        subject: agent.subject,
+        prompt: newPrompt,
+        language: agent.language,
+      });
+
+      toast.success("AI tutor has been notified that you're confused!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to notify AI tutor");
+    }
+  };
 
   const handleMicToggle = async () => {
     if (isMute) {
@@ -102,6 +138,15 @@ export const CallActive = ({
           title={isWhiteboardOpen ? "Close whiteboard" : "Open whiteboard"}
         >
           <Palette className="w-5 h-5" />
+        </button>
+
+        {/* I'm Confused Button */}
+        <button
+          onClick={handleConfused}
+          className="p-3 rounded-full bg-orange-500 hover:bg-orange-600 text-white transition-all duration-200"
+          title="I'm Confused"
+        >
+          <Frown className="w-5 h-5" />
         </button>
 
         {/* Leave Call */}
