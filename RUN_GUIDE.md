@@ -9,11 +9,11 @@ Follow these steps to set up and run the **Ngerti.In** project locally.
 
 ## 2. Environment Setup
 Create a `.env` file in the root directory and add the following keys. 
-*Note: You can use the values from the existing `.env` or provide your own.*
+*Note: You can use the values from the existing `.env` or provide your own. For features requiring webhooks (like AI summarization), you may need a public URL via Cloudflare Tunnel.*
 
 ```env
 # App Configuration
-NEXT_PUBLIC_APP_URL="http://localhost:3000"
+NEXT_PUBLIC_APP_URL="http://localhost:3000" # Use Cloudflare Tunnel URL if testing webhooks
 
 # Database (Neon PostgreSQL)
 DATABASE_URL="your_neon_db_url"
@@ -60,6 +60,13 @@ Ngerti.In uses Inngest for AI background tasks (like generating quiz summaries).
 npm run dev:inngest
 ```
 The Inngest UI will be available at `http://localhost:8288`.
+
+### Terminal 3: Cloudflare Tunnel (Optional)
+If you need to test features that require a public URL (like webhooks), use Cloudflare Tunnel:
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+Update your `NEXT_PUBLIC_APP_URL` in `.env` with the generated `trycloudflare.com` URL.
 
 ## 6. Features to Test
 - **Sign In/Up**: Use the authentication flow.

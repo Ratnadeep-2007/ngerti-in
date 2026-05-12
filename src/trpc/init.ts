@@ -2,11 +2,13 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { cache } from "react";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { ZodError } from "zod";
+
 export const createTRPCContext = cache(async () => {
   /**
    * @see: https://trpc.io/docs/server/context
    */
-  return { userId: "user_123" };
+  return {};
 });
 // Avoid exporting the entire t-object
 // since it's not very descriptive.
@@ -17,17 +19,30 @@ const t = initTRPC.create({
    * @see https://trpc.io/docs/server/data-transformers
    */
   // transformer: superjson,
+  errorFormatter({ shape, error }) {
+    return {
+      ...shape,
+      data: {
+        ...shape.data,
+        zodError:
+          error.cause instanceof ZodError ? error.cause.flatten() : null,
+      },
+    };
+  },
 });
 // Base router and procedure helpers
 export const createTRPCRouter = t.router;
 export const createCallerFactory = t.createCallerFactory;
 export const baseProcedure = t.procedure;
 export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
+  const h = await headers();
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: h,
   });
 
   if (!session) {
+    console.warn("🔐 [TRPC] Unauthorized attempt - No session found");
+    console.log("📄 [TRPC] Headers received:", Array.from(h.keys()));
     throw new TRPCError({
       code: "UNAUTHORIZED",
       message: "You must be logged in to access this resource.",

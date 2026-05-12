@@ -88,7 +88,6 @@ export const agentsRouter = createTRPCRouter({
       return existingAgent;
     }),
 
-  // TODO: Implement the create agent procedure
   getMany: protectedProcedure
     .input(
       z.object({

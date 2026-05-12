@@ -56,7 +56,17 @@ export const AgentForm = ({
       },
       onError: (error) => {
         toast.error(error.message);
-        // TODO: check if error is a TRPC error and handle accordingly
+        const fieldErrors = (error.data as any)?.zodError?.fieldErrors;
+        if (fieldErrors) {
+          Object.entries(fieldErrors).forEach(([key, messages]) => {
+            form.setError(key as any, {
+              type: "server",
+              message: Array.isArray(messages)
+                ? messages.join(", ")
+                : "Invalid value",
+            });
+          });
+        }
       },
     }),
   );
@@ -77,7 +87,17 @@ export const AgentForm = ({
       },
       onError: (error) => {
         toast.error(error.message);
-        // TODO: check if error is a TRPC error and handle accordingly
+        const fieldErrors = (error.data as any)?.zodError?.fieldErrors;
+        if (fieldErrors) {
+          Object.entries(fieldErrors).forEach(([key, messages]) => {
+            form.setError(key as any, {
+              type: "server",
+              message: Array.isArray(messages)
+                ? messages.join(", ")
+                : "Invalid value",
+            });
+          });
+        }
       },
     }),
   );

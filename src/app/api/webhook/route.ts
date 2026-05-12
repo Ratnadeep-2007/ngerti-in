@@ -30,10 +30,12 @@ function verifySignatureWithSDK(body: string, signature: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  console.log("📨 Webhook received at", new Date().toISOString());
   const signature = req.headers.get("x-signature");
   const apiKey = req.headers.get("x-api-key");
 
   if (!signature || !apiKey) {
+    console.error("❌ Missing signature or API key in headers");
     return NextResponse.json(
       { error: "Missing signature or API key" },
       { status: 400 },
@@ -41,16 +43,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.text();
+  console.log("📦 Webhook body length:", body.length);
 
   if (!verifySignatureWithSDK(body, signature)) {
+    console.error("❌ Invalid webhook signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
+
+  console.log("✅ Signature verified");
 
   let payload: unknown;
 
   try {
     payload = JSON.parse(body) as Record<string, unknown>;
-  } catch {
+  } catch (error) {
+    console.error("❌ Failed to parse JSON payload:", error);
     return NextResponse.json(
       { error: "Invalid JSON payload" },
       { status: 400 },
@@ -58,10 +65,12 @@ export async function POST(req: NextRequest) {
   }
 
   const eventType = (payload as Record<string, unknown>)?.type;
+  console.log("🔔 Event type:", eventType);
 
   if (eventType === "call.session_started") {
     const event = payload as CallSessionStartedEvent;
     const meetingId = event.call.custom?.meetingId;
+    console.log("📞 Call session started for meeting:", meetingId);
 
     if (!meetingId) {
       return NextResponse.json(

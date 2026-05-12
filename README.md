@@ -198,7 +198,7 @@ Make sure you have the following software installed on your machine:
 
   * Node.js (v18 or higher is recommended)
   * npm or yarn
-  * ngrok
+  * cloudflared
 
 ### Installation & Setup
 
@@ -220,7 +220,7 @@ Make sure you have the following software installed on your machine:
     Create a `.env` file in the project's root directory by copying from `.env.example` (if it exists) or creating it from scratch. Fill in all the necessary credentials.
 
     ```env
-    # You will get this URL from ngrok in a later step
+    # You will get this URL from cloudflared in a later step
     NEXT_PUBLIC_APP_URL=""
 
     # Database, Authentication, and other Service Credentials
@@ -244,7 +244,7 @@ Make sure you have the following software installed on your machine:
     ```
 
 5.  **Run Background Services**
-    Open **two new terminals** to run Inngest and ngrok separately.
+    Open **two new terminals** to run Inngest and cloudflared separately.
 
       * **In Terminal 1 (Inngest):**
         Run the Inngest dev server to handle background jobs and events.
@@ -253,14 +253,14 @@ Make sure you have the following software installed on your machine:
         npm run dev:inngest
         ```
 
-      * **In Terminal 2 (Ngrok):**
-        Run ngrok to expose your local server to the internet, which is required for webhooks to function correctly.
+      * **In Terminal 2 (Cloudflare Tunnel):**
+        Run cloudflared to expose your local server to the internet, which is required for webhooks to function correctly.
 
         ```sh
-        ngrok http 3000
+        cloudflared tunnel --url http://localhost:3000
         ```
 
-        Once this command is running, **copy the forwarding URL** provided by ngrok (e.g., `https://random-string.ngrok-free.app`) and **paste it** as the value for the `NEXT_PUBLIC_APP_URL` variable in your `.env` file.
+        Once this command is running, **copy the forwarding URL** provided by cloudflared (e.g., `https://random-string.trycloudflare.com`) and **paste it** as the value for the `NEXT_PUBLIC_APP_URL` variable in your `.env` file.
 
 6.  **Run the Main Development Server**
     Return to your main terminal and run the Next.js development server with Turbopack.
