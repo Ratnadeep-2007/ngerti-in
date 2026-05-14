@@ -8,7 +8,8 @@ import { agents, meetings } from "@/db/schema";
 // import { createWorker } from "tesseract.js";
 // import { StreamChat } from "stream-chat";
 import { streamChat } from "@/lib/stream-chat";
-// import {realtimeClient} from "web";
+import { queryKnowledgeBase } from "@/modules/agents/knowledge-base/server/query";
+import { suggestYouTubeVideos } from "@/lib/youtube";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -93,15 +94,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 5. Generate jawaban AI (OpenAI)
+  // 4.5 Search Knowledge Base (RAG)
+  const kbResults = await queryKnowledgeBase(
+    agent.id,
+    meeting.userId,
+    whiteboardSummary,
+  );
+
+  const kbContext = kbResults.length > 0 
+    ? "\n\n[TEXTBOOK KNOWLEDGE BASE]\n" + kbResults.map(r => `From ${r.filename}: ${r.content}`).join("\n---\n")
+    : "";
+
   // 5. Generate AI response (OpenAI)
   const updatedPrompt = `
 ${agent.prompt}
 
 [WHITEBOARD CONTEXT - LIVE UPDATE]
-${whiteboardSummary}
+${whiteboardSummary}${kbContext}
 
-Note: The above whiteboard content is the latest visual information shared by participants. Use this context to better understand the current discussion and provide more relevant responses.
+Note: The above whiteboard content and textbook excerpts are the latest information shared. Use this context to better understand the current discussion and provide more relevant, accurate responses based on the student's materials.
 `;
 
   await db
@@ -112,9 +123,21 @@ Note: The above whiteboard content is the latest visual information shared by pa
     })
     .where(eq(agents.id, agent.id));
 
+  // 6. Suggest YouTube Videos (RAG-enhanced context)
+  try {
+    const videos = await suggestYouTubeVideos(updatedPrompt);
+    if (videos.length > 0) {
+      await db
+        .update(meetings)
+        .set({
+          suggestedVideos: JSON.stringify(videos),
+          updatedAt: new Date(),
+        })
+        .where(eq(meetings.id, meetingId));
+    }
+  } catch (err) {
+    console.error("Failed to suggest YT videos:", err);
+  }
 
- 
-
-  
-    return new NextResponse(null, { status: 204 });
+  return new NextResponse(null, { status: 204 });
 }

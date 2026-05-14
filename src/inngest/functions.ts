@@ -8,11 +8,27 @@ import { user, agents, meetings } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { createAgent, openai, TextMessage } from "@inngest/agent-kit";
 import { Inngest } from "inngest"; // ✅ Import Inngest directly
-// import { real } from "drizzle-orm/gel-core";
+import { suggestYouTubeVideos } from "@/lib/youtube";
+import { z } from "zod";
+
+// ✅ Define schema for summarizer output validation
+const summarizerOutputSchema = z.object({
+  summary: z.string(),
+  quiz: z.array(z.object({
+    question: z.string(),
+    options: z.array(z.string()).length(4),
+    correctAnswer: z.coerce.number().min(0).max(3),
+  })).default([]),
+  learningPath: z.array(z.object({
+    title: z.string(),
+    description: z.string(),
+  })).default([]),
+  topics: z.array(z.string()).default([]),
+});
 
 // ✅ Create inngest client here instead of importing
 const inngest = new Inngest({ 
-  id: "ngerti-in",
+  id: "lumina-ai",
 });
 
 const summarizer = createAgent({
@@ -20,10 +36,11 @@ const summarizer = createAgent({
   system: `
   You are an expert summarizer and educational content creator. Your task is to process a transcript of a study session between a human student and an AI tutor.
 
-  You must generate three things:
+  You must generate four things:
   1. A comprehensive summary of the session.
   2. A 3-question quiz (multiple choice) based on the topics covered.
   3. A personalized learning path (next steps).
+  4. A list of core educational topics/concepts covered (e.g., ["Quadratic Equations", "Photosynthesis"]).
 
   Response Format:
   You MUST respond in valid JSON format with the following structure:
@@ -41,7 +58,8 @@ const summarizer = createAgent({
         "title": "string",
         "description": "string"
       }
-    ]
+    ],
+    "topics": ["string", "string"]
   }
 
   For the summary:
@@ -112,7 +130,14 @@ const meetingsProcessing = inngest.createFunction(
       const content = (output[0] as TextMessage).content as string;
       // Extract JSON if AI wrapped it in markdown code blocks
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      return JSON.parse(jsonMatch ? jsonMatch[0] : content);
+      const rawData = JSON.parse(jsonMatch ? jsonMatch[0] : content);
+      
+      // ✅ Validate AI output structure with Zod
+      return summarizerOutputSchema.parse(rawData);
+    });
+
+    const videos = await step.run("fetch-youtube-videos", async () => {
+      return await suggestYouTubeVideos(result.summary);
     });
 
     await step.run("save-results", async () => {
@@ -122,6 +147,8 @@ const meetingsProcessing = inngest.createFunction(
           summary: result.summary,
           quiz: JSON.stringify(result.quiz),
           learningPath: JSON.stringify(result.learningPath),
+          suggestedVideos: JSON.stringify(videos),
+          topics: JSON.stringify(result.topics || []),
           status: "completed",
         })
         .where(eq(meetings.id, event.data.meeting_id));
@@ -171,7 +198,7 @@ const pollAgentPrompt = inngest.createFunction(
         console.log("✅ Agent connected to call:", agentId);
 
         // ✅ Set up event listener ONCE outside the loop
-        realtimeClient.on("conversation.updated", (instruction: any) => {
+        realtimeClient.on("conversation.updated", (instruction: unknown) => {
           console.log(`📡 received conversation.updated`, instruction);
         });
 
@@ -188,18 +215,27 @@ const pollAgentPrompt = inngest.createFunction(
               .from(agents)
               .where(eq(agents.id, agentId));
 
+            const [latestMeeting] = await db
+              .select({ currentPrompt: meetings.currentPrompt })
+              .from(meetings)
+              .where(eq(meetings.id, meetingId));
+
             if (latestAgent) {
+              const combinedPrompt = latestMeeting?.currentPrompt 
+                ? `${latestAgent.prompt}\n\n${latestMeeting.currentPrompt}`
+                : latestAgent.prompt;
+
               // ✅ Only update if prompt has changed
-              if (latestAgent.prompt !== previousPrompt) {
+              if (combinedPrompt !== previousPrompt) {
                 console.log("🔄 Prompt changed, updating session...");
-                console.log("📝 New prompt:", latestAgent.prompt.substring(0, 200) + "...");
+                console.log("📝 New combined prompt:", combinedPrompt.substring(0, 200) + "...");
                 
                 await realtimeClient.updateSession({
-                  instructions: latestAgent.prompt,
+                  instructions: combinedPrompt,
                 });
                 
-                previousPrompt = latestAgent.prompt;
-                console.log("✅ Session updated with new instructions");
+                previousPrompt = combinedPrompt;
+                console.log("✅ Session updated with new combined instructions");
               } else {
                 console.log("⏭️ No prompt change, skipping update");
               }

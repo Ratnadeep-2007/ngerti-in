@@ -9,6 +9,7 @@ import {
 import { CallLobby } from "./call-lobby";
 import { CallActive } from "./call-active";
 import { CallEnded } from "./call-ended";
+import { YouTubeSuggestions } from "./youtube-suggestions";
 import dynamic from "next/dynamic";
 import { X } from "lucide-react";
 
@@ -94,6 +95,9 @@ export const CallUI = ({
 
       {show === "call" && (
         <div className="relative h-full w-full overflow-hidden">
+          {/* YouTube Suggestions Overlay */}
+          <YouTubeSuggestions meetingId={call?.id || ""} />
+
           {/* Call Active Component - Full Screen */}
           <div className="h-full w-full">
             <CallActive
@@ -101,6 +105,7 @@ export const CallUI = ({
               onWhiteboardToggle={handleWhiteboardToggle}
               isWhiteboardOpen={isWhiteboardOpen}
               agentId={agentId}
+              meetingId={call?.id || ""}
             />
           </div>
 

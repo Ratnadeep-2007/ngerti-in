@@ -1,4 +1,4 @@
-# Hackathon Feature Ideas for Ngerti.In
+# Hackathon Feature Ideas for Lumina.ai
 
 ## 1. "Snap, Drop, & Solve" (Homework Scanner) 📸✨
 *   **The Concept:** Allow students to take a photo of their homework or drop an image into the chat. The AI instantly reads it, drops the problem onto the Excalidraw whiteboard, and begins explaining it step-by-step using its voice.

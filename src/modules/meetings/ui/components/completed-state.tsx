@@ -14,6 +14,7 @@ import {
   MapIcon,
   CheckCircle2Icon,
   CircleIcon,
+  DownloadIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { GeneratedAvatar } from "@/components/generated-avatar";
@@ -31,6 +32,9 @@ interface CompletedStateProps {
 export const CompletedState = ({ data }: CompletedStateProps) => {
   const quiz = data.quiz ? JSON.parse(data.quiz) : null;
   const learningPath = data.learningPath ? JSON.parse(data.learningPath) : null;
+  const suggestedVideos = data.suggestedVideos
+    ? JSON.parse(data.suggestedVideos)
+    : null;
   const [selectedOptions, setSelectedOptions] = React.useState<number[]>([]);
   const [showResults, setShowResults] = React.useState(false);
 
@@ -38,6 +42,33 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
     const newSelected = [...selectedOptions];
     newSelected[questionIndex] = optionIndex;
     setSelectedOptions(newSelected);
+  };
+
+  const handleExportFlashcards = () => {
+    if (!quiz) return;
+
+    // Format: Front, Back
+    // For Anki: "Question","Answer"
+    const csvContent = quiz
+      .map((q: any) => {
+        const question = q.question.replace(/"/g, '""');
+        const answer = q.options[q.correctAnswer].replace(/"/g, '""');
+        return `"${question}","${answer}"`;
+      })
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute(
+      "download",
+      `lumina-ai-flashcards-${data.name.toLowerCase().replace(/\s+/g, "-")}.csv`,
+    );
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -67,6 +98,13 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                 >
                   <MapIcon />
                   Next Steps
+                </TabsTrigger>
+                <TabsTrigger
+                  value="videos"
+                  className="text-muted-foreground rounded-none bg-background data-[state=active]:shadow-none border-b-2 border-transparent data-[state-active]:border-b-primary data-[state-active]:text-accent-foreground h-full hover:text-accent-foreground"
+                >
+                  <FileVideoIcon />
+                  Suggested Videos
                 </TabsTrigger>
                 <TabsTrigger
                   value="transcript"
@@ -107,6 +145,49 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
           <TabsContent value="transcript">
             <Transcript meetingId={data.id} />
           </TabsContent>
+          <TabsContent value="videos">
+            <div className="bg-white rounded-lg border p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-2 text-xl font-bold text-red-600">
+                <FileVideoIcon className="size-6" />
+                <h2>Suggested Videos</h2>
+              </div>
+              <p className="text-muted-foreground">
+                Hand-picked educational videos to help you understand these
+                concepts better:
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-2">
+                {suggestedVideos?.map((video: any, i: number) => (
+                  <Link
+                    key={i}
+                    href={video.url}
+                    target="_blank"
+                    className="group flex flex-col gap-3 p-3 rounded-2xl border bg-gray-50/50 hover:bg-white hover:shadow-xl hover:border-red-200 transition-all duration-300"
+                  >
+                    <div className="relative aspect-video overflow-hidden rounded-xl border">
+                      <img
+                        src={video.thumbnail}
+                        alt={video.title}
+                        className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                        <div className="size-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+                          <FileVideoIcon className="size-6 fill-current" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 leading-tight line-clamp-2 group-hover:text-red-700 transition-colors">
+                        {video.title}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        View on YouTube
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
           <TabsContent value="path">
             <div className="bg-white rounded-lg border p-6 flex flex-col gap-4">
               <div className="flex items-center gap-2 text-xl font-bold text-emerald-600">
@@ -146,17 +227,31 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                   <ListChecksIcon className="size-6" />
                   <h2>Knowledge Check</h2>
                 </div>
-                {showResults && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setShowResults(false);
-                      setSelectedOptions([]);
-                    }}
-                  >
-                    Retry Quiz
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {quiz && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportFlashcards}
+                      className="flex items-center gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+                    >
+                      <DownloadIcon className="size-4" />
+                      Export to Anki
+                    </Button>
+                  )}
+                  {showResults && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowResults(false);
+                        setSelectedOptions([]);
+                      }}
+                    >
+                      Retry Quiz
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {!quiz ? (

@@ -1,7 +1,6 @@
 import React from "react";
 import { MeetingGetOne } from "../../types";
 import { useTRPC } from "@/trpc/client";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -16,7 +15,6 @@ import {
   FormMessage,
   FormDescription,
 } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -24,6 +22,7 @@ import { useState } from "react";
 import { CommandSelect } from "@/components/command-select";
 import { GeneratedAvatar } from "@/components/generated-avatar";
 import { NewAgentDialog } from "@/modules/agents/ui/components/new-agent-dialog";
+import { Switch } from "@/components/ui/switch";
 // import { tr } from "date-fns/locale";
 
 interface MeetingFormProps {
@@ -38,7 +37,6 @@ export const MeetingForm = ({
   initialValues,
 }: MeetingFormProps) => {
   const trpc = useTRPC();
-  const router = useRouter();
   const [agentSearch, setAgentSearch] = useState("");
   const [openANewAgentDialog, setOpenNewAgentDialog] = useState(false);
 
@@ -113,6 +111,7 @@ export const MeetingForm = ({
     defaultValues: {
       name: initialValues?.name || "",
       agentId: initialValues?.agentId || "",
+      isPublic: initialValues?.isPublic || false,
     },
   });
 
@@ -194,7 +193,30 @@ export const MeetingForm = ({
               </FormItem>
             )}
           />
-          <div>
+
+          <FormField
+            name="isPublic"
+            control={form.control}
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-xs">
+                <div className="space-y-0.5">
+                  <FormLabel>Public Meeting</FormLabel>
+                  <FormDescription>
+                    Allow other students to discover and join your study
+                    session.
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+
+          <div className="flex justify-end gap-x-2">
             {onCancel && (
               <Button
                 variant="ghost"

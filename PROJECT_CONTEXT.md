@@ -1,13 +1,13 @@
-# Ngerti.In - Project Context Document
+# Lumina.ai - Project Context Document
 
-This document provides a comprehensive overview of the `Ngerti.In` project architecture, vision, tech stack, and current implementation details to help AI assistants understand the codebase 100%.
+This document provides a comprehensive overview of the `Lumina.ai` project architecture, vision, tech stack, and current implementation details to help AI assistants understand the codebase 100%.
 
 ## 🌟 Project Vision & Background
 
-Ngerti.In is an innovative AI-powered learning platform designed to provide personalized and interactive learning experiences. It connects students with AI tutors for various subjects, facilitating engaging learning sessions through real-time voice integration and interactive whiteboard explanations. 
+Lumina.ai is an innovative AI-powered learning platform designed to provide personalized and interactive learning experiences. It connects students with AI tutors for various subjects, facilitating engaging learning sessions through real-time voice integration and interactive whiteboard explanations. 
 - **Achievement:** 3rd Place Winner (Education & Equity Track) at GarudaHacks 6.0.
 - **Problem Solved:** Lack of access to quality education, difficulty understanding passive lectures (like YouTube), and fear of judgment when asking questions.
-- **Value Proposition:** Unlike ChatGPT or YouTube, Ngerti.In offers real-time whiteboard activations, two-way vocal communication, and personalized on-demand tutoring.
+- **Value Proposition:** Unlike ChatGPT or YouTube, Lumina.ai offers real-time whiteboard activations, two-way vocal communication, and personalized on-demand tutoring.
 
 ## 🏗 Comprehensive Tech Stack
 
@@ -86,11 +86,13 @@ To run fully, the project requires:
 5. **Adaptive Quizzes:** Generated post-meeting and displayed interactively.
 6. **Multilingual Native Dialect Support:** Dynamic prompt injection for dialects like Javanese/Sundanese.
 7. **Session Recordings & Transcripts:** Stream Video SDK recording services.
+8. **YouTube Integration:** AI suggests and embeds relevant educational YouTube videos based on session context.
+9. **"Upload Your Textbook" (RAG):** RAG-based tutoring via PDF parsing and vector database indexing.
+10. **"Smart Knowledge Map":** Visual representation of student mastery using `react-force-graph`.
+11. **Confusion/Emotion Detection:** Proactive AI intervention via `face-api.js` evaluating facial expressions in real-time.
+12. **"Export to Flashcards":** Exporting AI-generated quizzes to Anki (CSV format).
+13. **"AI Study Buddy":** Real-time matchmaking to suggest and join collaborative study sessions with other students.
 
 ### 🚧 Planned Features (Roadmap)
-8. **YouTube Integration:** AI suggests and embeds relevant educational YouTube videos.
-9. **"Upload Your Textbook" (RAG):** RAG-based tutoring via PDF parsing and vector DBs (Supabase Vector/Pinecone).
-10. **"Smart Knowledge Map":** Visual representation of mastery using `react-force-graph`.
-11. **Confusion/Emotion Detection:** Proactive AI intervention via `face-api.js` evaluating facial expressions.
-12. **"Export to Flashcards":** Exporting AI-generated quizzes to Anki/Quizlet.
-13. **"AI Study Buddy":** Suggesting collaborative study sessions via real-time presence.
+*All core roadmap features have been successfully implemented!*
+

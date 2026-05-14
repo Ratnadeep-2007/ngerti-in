@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Ngerti.in",
+  title: "Lumina.ai",
   description: "AI powered learning platform",
 };
 

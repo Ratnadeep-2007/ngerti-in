@@ -1,6 +1,6 @@
-# Ngerti.In - Project Run Guide
+# Lumina.ai - Project Run Guide
 
-Follow these steps to set up and run the **Ngerti.In** project locally.
+Follow these steps to set up and run the **Lumina.ai** project locally.
 
 ## 1. Prerequisites
 - **Node.js**: v18 or higher.
@@ -55,7 +55,7 @@ npm run dev
 The app will be available at `http://localhost:3000`.
 
 ### Terminal 2: Inngest Dev Server
-Ngerti.In uses Inngest for AI background tasks (like generating quiz summaries).
+Lumina.ai uses Inngest for AI background tasks (like generating quiz summaries).
 ```bash
 npm run dev:inngest
 ```

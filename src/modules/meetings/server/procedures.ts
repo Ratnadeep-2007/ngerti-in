@@ -91,20 +91,40 @@ export const meetingsRouter = createTRPCRouter({
     .input(meetingsUpdateSchema)
     .mutation(async ({ input, ctx }) => {
       const { id, ...updateData } = input;
-      const [updatedMeeting] = await db
-        .update(meetings)
-        .set(updateData)
-        .where(
-          and(eq(meetings.id, id), eq(meetings.userId, ctx.userId.user.id)),
-        )
-        .returning();
 
-      if (!updatedMeeting) {
+      const [existingMeeting] = await db
+        .select()
+        .from(meetings)
+        .where(eq(meetings.id, id));
+
+      if (!existingMeeting) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Meeting not found",
         });
       }
+
+      const isOwner = existingMeeting.userId === ctx.userId.user.id;
+      const isPublicActive =
+        existingMeeting.isPublic && existingMeeting.status === "active";
+
+      if (!isOwner && !isPublicActive) {
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "You are not authorized to update this meeting",
+        });
+      }
+
+      // ✅ Security: If not owner, ONLY allow updating currentPrompt
+      const finalUpdateData = isOwner
+        ? updateData
+        : { currentPrompt: updateData.currentPrompt };
+
+      const [updatedMeeting] = await db
+        .update(meetings)
+        .set(finalUpdateData)
+        .where(eq(meetings.id, id))
+        .returning();
 
       return updatedMeeting;
     }),
@@ -185,12 +205,15 @@ export const meetingsRouter = createTRPCRouter({
         .where(
           and(
             eq(meetings.id, input.id),
-            eq(meetings.userId, ctx.userId.user.id),
+            or(
+              eq(meetings.userId, ctx.userId.user.id),
+              eq(meetings.isPublic, true),
+            ),
           ),
         );
 
       if (!existingMeeting) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Agent not found" });
+        throw new TRPCError({ code: "NOT_FOUND", message: "Meeting not found" });
       }
 
       return existingMeeting;
@@ -393,5 +416,92 @@ export const meetingsRouter = createTRPCRouter({
       .limit(1);
 
     return latestMeeting || null;
+  }),
+
+  getKnowledgeMap: protectedProcedure.query(async ({ ctx }) => {
+    const allMeetings = await db
+      .select({
+        id: meetings.id,
+        name: meetings.name,
+        topics: meetings.topics,
+      })
+      .from(meetings)
+      .where(
+        and(
+          eq(meetings.userId, ctx.userId.user.id),
+          eq(meetings.status, "completed"),
+        ),
+      );
+
+    const nodes: any[] = [];
+    const links: any[] = [];
+    const topicToMeetings: Record<string, string[]> = {};
+
+    allMeetings.forEach((meeting) => {
+      if (!meeting.topics) return;
+      let topics: string[] = [];
+      try {
+        topics = JSON.parse(meeting.topics);
+      } catch (e) {
+        return;
+      }
+
+      topics.forEach((topic) => {
+        if (!topicToMeetings[topic]) {
+          topicToMeetings[topic] = [];
+          nodes.push({ id: topic, group: 1, val: 1 });
+        } else {
+          // Increase node size if topic appears multiple times
+          const node = nodes.find((n) => n.id === topic);
+          if (node) node.val += 1;
+        }
+        topicToMeetings[topic].push(meeting.id);
+      });
+    });
+
+    // Create links between topics that appear in the same meeting
+    const topicList = Object.keys(topicToMeetings);
+    for (let i = 0; i < topicList.length; i++) {
+      for (let j = i + 1; j < topicList.length; j++) {
+        const t1 = topicList[i];
+        const t2 = topicList[j];
+
+        const sharedMeetings = topicToMeetings[t1].filter((m) =>
+          topicToMeetings[t2].includes(m),
+        );
+        if (sharedMeetings.length > 0) {
+          links.push({
+            source: t1,
+            target: t2,
+            value: sharedMeetings.length,
+          });
+        }
+      }
+    }
+
+    return { nodes, links };
+  }),
+
+  getDiscoverableMeetings: protectedProcedure.query(async ({ ctx }) => {
+    const discoverable = await db
+      .select({
+        ...getTableColumns(meetings),
+        agent: agents,
+        creator: user,
+      })
+      .from(meetings)
+      .innerJoin(agents, eq(meetings.agentId, agents.id))
+      .innerJoin(user, eq(meetings.userId, user.id))
+      .where(
+        and(
+          eq(meetings.status, "active"),
+          eq(meetings.isPublic, true),
+          sql`${meetings.userId} != ${ctx.userId.user.id}`,
+        ),
+      )
+      .orderBy(desc(meetings.createdAt))
+      .limit(5);
+
+    return discoverable;
   }),
 });

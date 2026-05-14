@@ -71,15 +71,24 @@ export const agentsRouter = createTRPCRouter({
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
+      // Allow access if owner OR if this agent is in an active public meeting
       const [existingAgent] = await db
         .select({
           meetingCount: sql<number>`5`,
           ...getTableColumns(agents),
         })
         .from(agents)
+        .leftJoin(meetings, eq(agents.id, meetings.agentId))
         .where(
-          and(eq(agents.id, input.id), eq(agents.userId, ctx.userId.user.id)),
-        );
+          and(
+            eq(agents.id, input.id),
+            or(
+              eq(agents.userId, ctx.userId.user.id),
+              and(eq(meetings.isPublic, true), eq(meetings.status, "active")),
+            ),
+          ),
+        )
+        .limit(1);
 
       if (!existingAgent) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Tutor not found" });

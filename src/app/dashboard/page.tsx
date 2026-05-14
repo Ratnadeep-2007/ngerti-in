@@ -4,6 +4,8 @@ import React from "react";
 import { redirect } from "next/navigation";
 import QuickAccess from "@/modules/main-dashboard/views/quick-access";
 import Analytics from "@/modules/main-dashboard/views/analytics";
+import KnowledgeMap from "@/modules/main-dashboard/views/knowledge-map";
+import { StudyBuddyDiscovery } from "@/modules/main-dashboard/ui/study-buddy-discovery";
 import { getQueryClient, trpc } from "@/trpc/server";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Suspense } from "react";
@@ -22,6 +24,8 @@ const page = async () => {
   void queryClient.prefetchQuery(trpc.meetings.getLatestMeeting.queryOptions());
   void queryClient.prefetchQuery(trpc.meetings.getHours.queryOptions());
   void queryClient.prefetchQuery(trpc.agents.getMany.queryOptions({}));
+  void queryClient.prefetchQuery(trpc.meetings.getKnowledgeMap.queryOptions());
+  void queryClient.prefetchQuery(trpc.meetings.getDiscoverableMeetings.queryOptions());
 
   void queryClient.prefetchQuery(trpc.meetings.getMany.queryOptions({}));
   return (
@@ -38,6 +42,23 @@ const page = async () => {
             <Analytics />
           </ErrorBoundary>
         </Suspense>
+
+        <Suspense fallback={null}>
+          <StudyBuddyDiscovery />
+        </Suspense>
+
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-8">
+              <LoaderCircle className="animate-spin text-blue-600 size-8" />
+            </div>
+          }
+        >
+          <ErrorBoundary fallback={<div>Error loading knowledge map</div>}>
+            <KnowledgeMap />
+          </ErrorBoundary>
+        </Suspense>
+
         <Suspense
           fallback={
             <div className="flex items-center justify-center py-8">

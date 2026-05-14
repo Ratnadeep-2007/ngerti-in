@@ -9,21 +9,23 @@ import {
   Mic,
   MicOff,
   PhoneOff,
-  Monitor,
-  MonitorOff,
   Palette,
   Frown,
+  Brain,
+  BrainCircuit,
 } from "lucide-react";
-// import { useState } from "react";
+import { useCallback } from "react";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useEmotionDetection } from "../../hooks/use-emotion-detection";
 
 interface CallActiveProps {
   meetingName: string;
   onWhiteboardToggle?: () => void;
   isWhiteboardOpen?: boolean;
   agentId?: string;
+  meetingId: string;
 }
 
 export const CallActive = ({
@@ -31,41 +33,56 @@ export const CallActive = ({
   onWhiteboardToggle,
   isWhiteboardOpen,
   agentId,
+  meetingId,
 }: CallActiveProps) => {
   const call = useCall();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const { mutateAsync: updateAgent } = useMutation(
-    trpc.agents.update.mutationOptions(),
+  const { mutateAsync: updateMeeting } = useMutation(
+    trpc.meetings.update.mutationOptions(),
   );
 
-  const { useMicrophoneState, useScreenShareState } = useCallStateHooks();
+  const { useMicrophoneState } = useCallStateHooks();
   const { microphone, isMute } = useMicrophoneState();
-  // const { screenShare, isScreenShareOn } = useScreenShareState();
 
-  const handleConfused = async () => {
-    if (!agentId) return;
+  const handleConfused = useCallback(
+    async (source: "manual" | "proactive" = "manual") => {
+      if (!meetingId) return;
 
-    try {
-      const agent = await queryClient.fetchQuery(
-        trpc.agents.getOne.queryOptions({ id: agentId }),
-      );
-      const newPrompt = `${agent.prompt}\n\n[CONTEXT: The student just clicked the 'I am confused' button. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way.]`;
+      try {
+        const contextMessage =
+          source === "manual"
+            ? "The student just clicked the 'I am confused' button. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way."
+            : "The AI emotion detector noticed the student looks confused or concerned. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way.";
 
-      await updateAgent({
-        id: agentId,
-        name: agent.name,
-        subject: agent.subject,
-        prompt: newPrompt,
-        language: agent.language,
-      });
+        await updateMeeting({
+          id: meetingId,
+          currentPrompt: contextMessage,
+        });
 
-      toast.success("AI tutor has been notified that you're confused!");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to notify AI tutor");
-    }
-  };
+        if (source === "manual") {
+          toast.success("AI tutor has been notified that you're confused!");
+        } else {
+          toast.info(
+            "AI tutor noticed you might be confused and is adapting...",
+            {
+              icon: <Brain className="size-4" />,
+            },
+          );
+        }
+      } catch (err) {
+        console.error(err);
+        if (source === "manual") {
+          toast.error("Failed to notify AI tutor");
+        }
+      }
+    },
+    [meetingId, updateMeeting],
+  );
+
+  const { videoRef, isModelsLoaded } = useEmotionDetection(() =>
+    handleConfused("proactive"),
+  );
 
   const handleMicToggle = async () => {
     if (isMute) {
@@ -80,16 +97,38 @@ export const CallActive = ({
   };
 
   return (
-    <div className="flex flex-col justify-between p-4 h-full text-white">
+    <div className="flex flex-col justify-between p-4 h-full text-white relative">
+      {/* Hidden Video for Emotion Detection */}
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        className="hidden absolute -z-50 opacity-0 pointer-events-none"
+      />
+
       {/* Header */}
-      <div className="bg-[#101213] rounded-full p-4 flex items-center gap-4">
-        <Link
-          href={"/"}
-          className="flex items-center p-1 bg-white/10 rounded-full w-fit hover:bg-white/20 transition-colors"
-        >
-          <Image src={"/logo.svg"} width={22} height={22} alt="logo" />
-        </Link>
-        <h4 className="text-base font-medium">{meetingName}</h4>
+      <div className="bg-[#101213] rounded-full p-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href={"/"}
+            className="flex items-center p-1 bg-white/10 rounded-full w-fit hover:bg-white/20 transition-colors"
+          >
+            <Image src={"/logo.svg"} width={22} height={22} alt="logo" />
+          </Link>
+          <h4 className="text-base font-medium">{meetingName}</h4>
+        </div>
+
+        {/* Emotion Detection Status */}
+        {isModelsLoaded && (
+          <div
+            className="flex items-center gap-2 px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full animate-pulse"
+            title="AI Emotion Detection Active"
+          >
+            <BrainCircuit className="size-4 text-blue-400" />
+            <span className="text-xs font-medium text-blue-100">AI Active</span>
+          </div>
+        )}
       </div>
 
       {/* Video Layout */}

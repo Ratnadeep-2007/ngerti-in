@@ -1,6 +1,13 @@
-import { pgTable, text, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, pgEnum, customType } from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
 import { use } from "react";
+
+// Add vector type for pgvector
+const vector = customType<{ data: number[] }>({
+  dataType() {
+    return "vector(1536)";
+  },
+});
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -107,6 +114,27 @@ export const agents = pgTable("agents", {
   ),
 });
 
+export const knowledgeBase = pgTable("knowledge_base", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => nanoid()),
+  agentId: text("agent_id")
+    .notNull()
+    .references(() => agents.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  filename: text("filename").notNull(),
+  content: text("content").notNull(),
+  embedding: vector("embedding"),
+  createdAt: timestamp("created_at")
+    .$defaultFn(() => /* @__PURE__ */ new Date())
+    .notNull(),
+  updatedAt: timestamp("updated_at").$defaultFn(
+    () => /* @__PURE__ */ new Date(),
+  ),
+});
+
 export const meetingStatus = pgEnum("meeting_status", [
   "upcoming",
   "active",
@@ -134,6 +162,10 @@ export const meetings = pgTable("meetings", {
   summary: text("summary"),
   quiz: text("quiz"), // JSON string of quiz questions
   learningPath: text("learning_path"), // JSON string of recommended next steps
+  suggestedVideos: text("suggested_videos"), // JSON string of [{title, url, thumbnail}]
+  topics: text("topics"), // JSON string of ["Topic A", "Topic B"]
+  currentPrompt: text("current_prompt"), // Transient session-specific instructions
+  isPublic: boolean("is_public").notNull().default(false),
   createdAt: timestamp("created_at")
     .$defaultFn(() => /* @__PURE__ */ new Date())
     .notNull(),

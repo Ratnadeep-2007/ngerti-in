@@ -10,15 +10,15 @@ export default function About() {
       <div className="flex flex-col gap-36">
         <div className="flex flex-col gap-8">
           <h1 className="w-full text-center font-bold text-4xl">
-            About <span className="text-primary">Ngerti.In</span>
+            About <span className="text-primary">Lumina.ai</span>
           </h1>
           <p className="text-xl w-full text-center">
             Have you ever struggled to understand teacher&apos;s lecture in
             class? Well, You&apos;re not alone. In today's classroom, many
-            students feel lost. Ngerti.In is designed to offers an active and
+            students feel lost. Lumina.ai is designed to offers an active and
             personal learning experience, as if they have their own private
             tutor. Whether you're solving equations, brainstorming ideas, or
-            stuck on a concept, Ngerti.In is here to help.
+            stuck on a concept, Lumina.ai is here to help.
           </p>
         </div>
 

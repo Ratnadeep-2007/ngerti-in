@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useConfirm } from "../../hooks/use-confirm";
 import { useState } from "react";
 import { UpdateAgentDialog } from "../components/update-agent-dialog";
+import { KnowledgeBaseSection } from "../../knowledge-base/ui/components/knowledge-base-section";
 
 interface Props {
   agentId: string;
@@ -98,6 +99,8 @@ export const AgentIdView = ({ agentId }: Props) => {
               <p className="text-lg font-medium">Prompt</p>
               <p className="text-neutral-800">{data.prompt}</p>
             </div>
+            <hr className="my-2" />
+            <KnowledgeBaseSection agentId={agentId} />
           </div>
         </div>
       </div>
