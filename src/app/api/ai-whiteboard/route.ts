@@ -1,6 +1,6 @@
 // src/app/api/ai-whiteboard/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
+import { genAI } from "@/lib/gemini";
 import { streamVideo } from "@/lib/stream-video";
 import { db } from "@/db";
 import { eq } from "drizzle-orm";
@@ -11,15 +11,18 @@ import { streamChat } from "@/lib/stream-chat";
 import { queryKnowledgeBase } from "@/modules/agents/knowledge-base/server/query";
 import { suggestYouTubeVideos } from "@/lib/youtube";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+interface ExcalidrawElement {
+  type: string;
+  text?: string;
+}
 
 export async function POST(req: NextRequest) {
   const { elements, appState, meetingId, imageBase64 } = await req.json();
 
   // 1. Ekstrak elemen text dari Excalidraw scene
   const texts = elements
-    .filter((el: any) => el.type === "text" && el.text && el.text.trim())
-    .map((el: any) => el.text);
+    .filter((el: ExcalidrawElement) => el.type === "text" && el.text && el.text.trim())
+    .map((el: ExcalidrawElement) => el.text);
 
   // 2. (Opsional) OCR jika perlu, tambahkan di sini
   let ocrText = "";
@@ -29,28 +32,17 @@ export async function POST(req: NextRequest) {
         ? imageBase64.split(",")[1]
         : imageBase64;
 
-      const visionResponse = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract and transcribe all text visible in this whiteboard image. Only return the text content, no explanations:",
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/png;base64,${pureBase64}`,
-                },
-              },
-            ],
-          },
-        ],
-        max_tokens: 500,
-      });
-      ocrText = visionResponse.choices[0]?.message?.content?.trim() ?? "";
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent([
+        "Extract and transcribe all text visible in this whiteboard image. Only return the text content, no explanations:",
+        {
+          inlineData: {
+            data: pureBase64,
+            mimeType: "image/png"
+          }
+        }
+      ]);
+      ocrText = result.response.text();
     } catch (err) {
       console.error("Vision API Error:", err);
       ocrText = "";
