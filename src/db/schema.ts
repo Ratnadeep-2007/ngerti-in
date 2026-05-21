@@ -5,7 +5,7 @@ import { use } from "react";
 // Add vector type for pgvector
 const vector = customType<{ data: number[] }>({
   dataType() {
-    return "vector(1536)";
+    return "vector(768)";
   },
 });
 
