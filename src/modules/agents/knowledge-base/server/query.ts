@@ -1,9 +1,7 @@
 import { db } from "@/db";
 import { knowledgeBase } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+import { genAI } from "@/lib/gemini";
 
 /**
  * Searches the knowledge base for content relevant to the current conversation.
@@ -19,13 +17,10 @@ export async function queryKnowledgeBase(
   limit: number = 3,
 ) {
   try {
-    // 1. Generate embedding for the query
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: queryText.substring(0, 4000),
-    });
-
-    const queryEmbedding = embeddingResponse.data[0].embedding;
+    // 1. Generate embedding for the query using Gemini
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    const result = await model.embedContent(queryText.substring(0, 4000));
+    const queryEmbedding = result.embedding.values;
 
     // 2. Perform vector similarity search using raw SQL (Drizzle doesn't natively support <-> for vectors yet)
     // We use cosine distance <=> or inner product <#> or Euclidean distance <->

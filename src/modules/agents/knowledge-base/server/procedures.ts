@@ -4,9 +4,7 @@ import { db } from "@/db";
 import { knowledgeBase } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import OpenAI from "openai";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+import { genAI } from "@/lib/gemini";
 
 export const knowledgeBaseRouter = createTRPCRouter({
   create: protectedProcedure
@@ -20,13 +18,10 @@ export const knowledgeBaseRouter = createTRPCRouter({
     .mutation(async ({ input, ctx }) => {
       const { agentId, filename, content } = input;
 
-      // 1. Generate embedding using OpenAI
-      const embeddingResponse = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: content.substring(0, 8000), // OpenAI limit
-      });
-
-      const embedding = embeddingResponse.data[0].embedding;
+      // 1. Generate embedding using Gemini
+      const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+      const result = await model.embedContent(content.substring(0, 8000));
+      const embedding = result.embedding.values;
 
       // 2. Save to DB
       const [createdEntry] = await db
