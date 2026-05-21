@@ -1,29 +1,20 @@
-import OpenAI from "openai";
-import { ChatCompletionMessageParam } from "openai/resources/index.mjs";
 import {
   CallEndedEvent,
-  // MessageNewEvent,
   CallTranscriptionReadyEvent,
   CallSessionParticipantLeftEvent,
   CallRecordingReadyEvent,
   CallSessionStartedEvent,
-  MessageNewEvent, // Add this import
+  MessageNewEvent,
 } from "@stream-io/node-sdk";
 import { eq, and, not } from "drizzle-orm";
 import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/db";
 import { agents, meetings } from "@/db/schema";
 import { streamVideo } from "@/lib/stream-video";
-// import { StreamClient } from "@stream-io/node-sdk";
-// import { Signature } from "lucide-react";
-// import { headers } from "next/headers";
 import { inngest } from "@/inngest/client";
 import { generatedAvatarUri } from "@/lib/avatar";
 import { streamChat } from "@/lib/stream-chat";
-
-const openaiClient = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+import { getGeminiModel } from "@/lib/gemini";
 
 function verifySignatureWithSDK(body: string, signature: string): boolean {
   return streamVideo.verifyWebhook(body, signature);
@@ -32,12 +23,11 @@ function verifySignatureWithSDK(body: string, signature: string): boolean {
 export async function POST(req: NextRequest) {
   console.log("📨 Webhook received at", new Date().toISOString());
   const signature = req.headers.get("x-signature");
-  const apiKey = req.headers.get("x-api-key");
 
-  if (!signature || !apiKey) {
-    console.error("❌ Missing signature or API key in headers");
+  if (!signature) {
+    console.error("❌ Missing signature in headers");
     return NextResponse.json(
-      { error: "Missing signature or API key" },
+      { error: "Missing signature" },
       { status: 400 },
     );
   }
@@ -286,24 +276,23 @@ export async function POST(req: NextRequest) {
 
       const channel = streamChat.channel("messaging", channelId);
       await channel.watch();
-      const previousMessage = channel.state.messages
+      const history = channel.state.messages
         .slice(-5)
         .filter((msg) => msg.text && msg.text.trim() !== "")
-        .map<ChatCompletionMessageParam>((message) => ({
-          role: message.user?.id === existingAgent.id ? "assistant" : "user",
-          content: message.text || "",
+        .map((message) => ({
+          role: message.user?.id === existingAgent.id ? "model" : "user",
+          parts: [{ text: message.text || "" }],
         }));
 
-      const GPTResponse = await openaiClient.chat.completions.create({
-        messages: [
-          { role: "system", content: instructions },
-          ...previousMessage,
-          { role: "user", content: text },
-        ],
-        model: "gpt-4o",
+      const model = getGeminiModel("gemini-1.5-flash");
+      const chat = model.startChat({
+        history: history,
+        systemInstruction: instructions,
       });
 
-      const GPTResponseText = GPTResponse.choices[0].message.content;
+      const result = await chat.sendMessage(text);
+      const GPTResponseText = result.response.text();
+
       if (!GPTResponseText) {
         return NextResponse.json(
           { error: "No response from GPT" },
