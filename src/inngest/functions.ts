@@ -6,10 +6,10 @@ import { StreamTranscriptItem } from "@/modules/meetings/types";
 import { db } from "@/db";
 import { user, agents, meetings } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { createAgent, openai, TextMessage } from "@inngest/agent-kit";
 import { Inngest } from "inngest"; // ✅ Import Inngest directly
 import { suggestYouTubeVideos } from "@/lib/youtube";
 import { z } from "zod";
+import { getGeminiModel } from "@/lib/gemini";
 
 // ✅ Define schema for summarizer output validation
 const summarizerOutputSchema = z.object({
@@ -31,9 +31,7 @@ const inngest = new Inngest({
   id: "lumina-ai",
 });
 
-const summarizer = createAgent({
-  name: "summarizer",
-  system: `
+const summarizerSystemPrompt = `
   You are an expert summarizer and educational content creator. Your task is to process a transcript of a study session between a human student and an AI tutor.
 
   You must generate four things:
@@ -70,9 +68,7 @@ const summarizer = createAgent({
 
   For the learning path:
   Suggest 3 specific topics or exercises the student should do next.
-`.trim(),
-  model: openai({ model: "gpt-4o", apiKey: process.env.OPENAI_API_KEY }),
-});
+`.trim();
 
 const meetingsProcessing = inngest.createFunction(
   { id: "meetings/processing", triggers: [{ event: "meetings/processing" }] },
@@ -121,13 +117,15 @@ const meetingsProcessing = inngest.createFunction(
       });
     });
 
-    const { output } = await summarizer.run(
-      "Process the following transcript and return JSON as requested: " +
-        JSON.stringify(transcriptWithSpeakers),
-    );
+    const content = await step.run("generate-summary", async () => {
+      const model = getGeminiModel("gemini-1.5-flash");
+      const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON as requested: ${JSON.stringify(transcriptWithSpeakers)}`;
+      
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    });
 
     const result = await step.run("parse-ai-output", async () => {
-      const content = (output[0] as TextMessage).content as string;
       // Extract JSON if AI wrapped it in markdown code blocks
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       const rawData = JSON.parse(jsonMatch ? jsonMatch[0] : content);
