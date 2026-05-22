@@ -54,7 +54,7 @@ export function DataTable<TData, TValue>({
                 className="h-96 text-center align-middle"
               >
                 <div className="flex items-center justify-center w-full h-full">
-                  Oops! It seems that you haven't made any {type} yet!
+                  Oops! It seems that you haven&apos;t made any {type} yet!
                 </div>
               </TableCell>
             </TableRow>

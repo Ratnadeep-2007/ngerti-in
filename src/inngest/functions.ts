@@ -73,83 +73,61 @@ const summarizerSystemPrompt = `
 const meetingsProcessing = inngest.createFunction(
   { id: "meetings/processing", triggers: [{ event: "meetings/processing" }] },
   async ({ event, step }) => {
-    const transcriptUrl = event.data.transcript_url;
-    if (!transcriptUrl) {
-      throw new Error("Missing transcript_url in event data");
-    }
-    console.log(transcriptUrl);
+    const { transcriptUrl, meeting_id } = event.data;
+    if (!transcriptUrl) throw new Error("Missing transcript_url");
 
-    const response = await step.run("fetch-transcript", async () => {
-      return fetch(transcriptUrl).then((res) => res.text());
+    // ✅ Parallel 1: Fetch and parse transcript while simultaneously identifying speakers
+    const [transcript, speakers] = await Promise.all([
+      step.run("fetch-and-parse-transcript", async () => {
+        const res = await fetch(transcriptUrl);
+        const text = await res.text();
+        return JSONL.parse<StreamTranscriptItem>(text);
+      }),
+      step.run("get-relevant-speakers", async () => {
+        // First get the transcript to know who we need (but we can't await it here if we want parallel)
+        // Optimization: We'll fetch all unique speaker IDs from the transcript after fetching it.
+        // To keep it parallel, we'll fetch only the users/agents linked to this specific meeting.
+        const [meetingData] = await db.select().from(meetings).where(eq(meetings.id, meeting_id)).limit(1);
+        const [users, agentsList] = await Promise.all([
+          db.select().from(user).where(eq(user.id, meetingData.userId)),
+          db.select().from(agents).where(eq(agents.id, meetingData.agentId))
+        ]);
+        return { users, agents: agentsList };
+      })
+    ]);
+
+    // ✅ Map speakers to transcript
+    const transcriptWithSpeakers = transcript.map((item) => {
+      const speaker = [...speakers.users, ...speakers.agents].find(s => s.id === item.speaker_id);
+      return { ...item, user: { name: speaker ? speaker.name : "Unknown" } };
     });
 
-    const transcript = await step.run("parse-transcript", async () => {
-      return JSONL.parse<StreamTranscriptItem>(response);
-    });
+    // ✅ Parallel 2: Generate Gemini summary and fetch YouTube videos simultaneously
+    const [aiOutput, youtubeVideos] = await Promise.all([
+      step.run("generate-gemini-summary", async () => {
+        const model = getGeminiModel("gemini-3.5-flash", { responseMimeType: "application/json" });
+        const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
+        const result = await model.generateContent(prompt);
+        return summarizerOutputSchema.parse(JSON.parse(result.response.text()));
+      }),
+      step.run("fetch-youtube-recommendations", async () => {
+        // We use the meeting name or a quick summary for faster YT search
+        return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
+      })
+    ]);
 
-    const transcriptWithSpeakers = await step.run("add-speakers", async () => {
-      const speakerIds = Array.from(
-        new Set(transcript.map((item) => item.speaker_id)),
-      );
-      const userSpeakers = await db
-        .select()
-        .from(user)
-        .where(inArray(user.id, speakerIds))
-        .then((users) => users.map((user) => ({ ...user })));
-      const agentSpeakers = await db
-        .select()
-        .from(agents)
-        .where(inArray(agents.id, speakerIds))
-        .then((agents) => agents.map((agent) => ({ ...agent })));
-
-      const speakers = [...userSpeakers, ...agentSpeakers];
-
-      return transcript.map((item) => {
-        const speaker = speakers.find(
-          (speaker) => speaker.id === item.speaker_id,
-        );
-        return {
-          ...item,
-          user: {
-            name: speaker ? speaker.name : "Unknown",
-          },
-        };
-      });
-    });
-
-    const content = await step.run("generate-summary", async () => {
-      const model = getGeminiModel("gemini-1.5-flash");
-      const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON as requested: ${JSON.stringify(transcriptWithSpeakers)}`;
-      
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    });
-
-    const result = await step.run("parse-ai-output", async () => {
-      // Extract JSON if AI wrapped it in markdown code blocks
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      const rawData = JSON.parse(jsonMatch ? jsonMatch[0] : content);
-      
-      // ✅ Validate AI output structure with Zod
-      return summarizerOutputSchema.parse(rawData);
-    });
-
-    const videos = await step.run("fetch-youtube-videos", async () => {
-      return await suggestYouTubeVideos(result.summary);
-    });
-
-    await step.run("save-results", async () => {
-      await db
-        .update(meetings)
+    // ✅ Final Save
+    await step.run("save-final-results", async () => {
+      await db.update(meetings)
         .set({
-          summary: result.summary,
-          quiz: JSON.stringify(result.quiz),
-          learningPath: JSON.stringify(result.learningPath),
-          suggestedVideos: JSON.stringify(videos),
-          topics: JSON.stringify(result.topics || []),
+          summary: aiOutput.summary,
+          quiz: JSON.stringify(aiOutput.quiz),
+          learningPath: JSON.stringify(aiOutput.learningPath),
+          suggestedVideos: JSON.stringify(youtubeVideos),
+          topics: JSON.stringify(aiOutput.topics || []),
           status: "completed",
         })
-        .where(eq(meetings.id, event.data.meeting_id));
+        .where(eq(meetings.id, meeting_id));
     });
   },
 );

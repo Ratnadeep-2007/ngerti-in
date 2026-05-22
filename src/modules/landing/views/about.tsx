@@ -14,10 +14,10 @@ export default function About() {
           </h1>
           <p className="text-xl w-full text-center">
             Have you ever struggled to understand teacher&apos;s lecture in
-            class? Well, You&apos;re not alone. In today's classroom, many
+            class? Well, You&apos;re not alone. In today&apos;s classroom, many
             students feel lost. Lumina.ai is designed to offers an active and
             personal learning experience, as if they have their own private
-            tutor. Whether you're solving equations, brainstorming ideas, or
+            tutor. Whether you&apos;re solving equations, brainstorming ideas, or
             stuck on a concept, Lumina.ai is here to help.
           </p>
         </div>

@@ -50,7 +50,7 @@ export const CallUI = ({
   });
 
   const handleJoin = async () => {
-    if (!call) return;
+    if (!call || callingState !== CallingState.IDLE) return;
     try {
       await call.join();
       setShow("call");

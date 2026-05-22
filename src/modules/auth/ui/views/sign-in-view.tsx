@@ -29,7 +29,7 @@ const formSchema = z.object({
 
 const SignInView = () => {
   const router = useRouter();
-  const [error, setError] = useState<String | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

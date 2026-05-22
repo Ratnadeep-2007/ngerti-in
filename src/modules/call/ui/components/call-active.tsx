@@ -85,10 +85,17 @@ export const CallActive = ({
   );
 
   const handleMicToggle = async () => {
-    if (isMute) {
-      await microphone.enable();
-    } else {
-      await microphone.disable();
+    try {
+      if (isMute) {
+        await microphone.enable();
+      } else {
+        await microphone.disable();
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        "Could not access microphone. Please check your browser permissions.",
+      );
     }
   };
 
@@ -181,7 +188,7 @@ export const CallActive = ({
 
         {/* I'm Confused Button */}
         <button
-          onClick={handleConfused}
+          onClick={() => handleConfused("manual")}
           className="p-3 rounded-full bg-orange-500 hover:bg-orange-600 text-white transition-all duration-200"
           title="I'm Confused"
         >

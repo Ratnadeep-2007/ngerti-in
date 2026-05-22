@@ -2,7 +2,7 @@
 
 import React, { useMemo, useRef, useEffect, useState } from "react";
 import { useTRPC } from "@/trpc/client";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { Loader2, Zap } from "lucide-react";
 
@@ -18,7 +18,7 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 
 const KnowledgeMap = () => {
   const trpc = useTRPC();
-  const { data, isLoading } = trpc.meetings.getKnowledgeMap.useQuery();
+  const { data } = useSuspenseQuery(trpc.meetings.getKnowledgeMap.queryOptions());
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
 
@@ -35,20 +35,6 @@ const KnowledgeMap = () => {
     if (!data) return { nodes: [], links: [] };
     return data;
   }, [data]);
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-y-4">
-        <div className="flex items-center gap-2">
-          <Zap className="size-5 text-blue-600" />
-          <h3 className="text-xl font-bold">Smart Knowledge Map</h3>
-        </div>
-        <div className="flex items-center justify-center h-[400px] w-full bg-neutral-50 rounded-xl border border-dashed">
-          <Loader2 className="size-8 animate-spin text-blue-600" />
-        </div>
-      </div>
-    );
-  }
 
   if (!data || data.nodes.length === 0) {
     return (

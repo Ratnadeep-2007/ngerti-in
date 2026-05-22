@@ -21,13 +21,14 @@ const page = async () => {
   }
 
   const queryClient = getQueryClient();
-  void queryClient.prefetchQuery(trpc.meetings.getLatestMeeting.queryOptions());
-  void queryClient.prefetchQuery(trpc.meetings.getHours.queryOptions());
-  void queryClient.prefetchQuery(trpc.agents.getMany.queryOptions({}));
-  void queryClient.prefetchQuery(trpc.meetings.getKnowledgeMap.queryOptions());
-  void queryClient.prefetchQuery(trpc.meetings.getDiscoverableMeetings.queryOptions());
-
-  void queryClient.prefetchQuery(trpc.meetings.getMany.queryOptions({}));
+  await Promise.all([
+    queryClient.prefetchQuery(trpc.meetings.getLatestMeeting.queryOptions()),
+    queryClient.prefetchQuery(trpc.meetings.getHours.queryOptions()),
+    queryClient.prefetchQuery(trpc.agents.getMany.queryOptions({})),
+    queryClient.prefetchQuery(trpc.meetings.getKnowledgeMap.queryOptions()),
+    queryClient.prefetchQuery(trpc.meetings.getDiscoverableMeetings.queryOptions()),
+    queryClient.prefetchQuery(trpc.meetings.getMany.queryOptions({})),
+  ]);
   return (
     <div className="p-8 flex-col flex gap-8">
       <HydrationBoundary state={dehydrate(queryClient)}>

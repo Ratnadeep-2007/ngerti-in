@@ -1,6 +1,7 @@
 "use client";
 
 import { useTRPC } from "@/trpc/client";
+import { useQuery } from "@tanstack/react-query";
 import { YouTubeVideo } from "@/lib/youtube";
 import { Youtube, ExternalLink, Play } from "lucide-react";
 import Image from "next/image";
@@ -12,9 +13,9 @@ interface YouTubeSuggestionsProps {
 
 export const YouTubeSuggestions = ({ meetingId }: YouTubeSuggestionsProps) => {
   const trpc = useTRPC();
-  const { data: meeting } = trpc.meetings.getOne.useQuery({ id: meetingId }, {
+  const { data: meeting } = useQuery(trpc.meetings.getOne.queryOptions({ id: meetingId }, {
     refetchInterval: 10000, // Poll every 10 seconds for new suggestions
-  });
+  }));
 
   const [videos, setVideos] = useState<YouTubeVideo[]>([]);
 

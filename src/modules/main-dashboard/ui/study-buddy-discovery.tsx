@@ -1,6 +1,7 @@
 "use client";
 
 import { useTRPC } from "@/trpc/client";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { Users, ArrowRight, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,10 +11,10 @@ import { GeneratedAvatar } from "@/components/generated-avatar";
 
 export const StudyBuddyDiscovery = () => {
   const trpc = useTRPC();
-  const { data: activeMeetings, isLoading } =
-    trpc.meetings.getDiscoverableMeetings.useQuery();
+  const { data: activeMeetings } = useSuspenseQuery(
+    trpc.meetings.getDiscoverableMeetings.queryOptions(),
+  );
 
-  if (isLoading) return null;
   if (!activeMeetings || activeMeetings.length === 0) return null;
 
   return (

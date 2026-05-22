@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-const pdf = require("pdf-parse");
+import { PDFParse } from "pdf-parse";
 
 export async function POST(req: NextRequest) {
   const session = await auth.api.getSession({
@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Parse PDF
-    const data = await pdf(buffer);
+    const parser = new PDFParse({ data: buffer });
+    const data = await parser.getText();
 
     return NextResponse.json({
       text: data.text,

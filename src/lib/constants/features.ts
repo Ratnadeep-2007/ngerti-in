@@ -5,7 +5,7 @@ export const features = [
     text: "Interactive Whiteboard Explanations",
     description:
       "Draw and write anything on the whiteboard, and Lumina.ai will read it, understand it, or even write feedback.",
-    alignment: "left" as "left",
+    alignment: "left" as const,
   },
   {
     id: 2,
@@ -13,7 +13,7 @@ export const features = [
     text: "Real-Time Voice Integration",
     description:
       "Ask your question out loud, and Lumina.ai will provide you with an answer.",
-    alignment: "right" as "right",
+    alignment: "right" as const,
   },
   {
     id: 3,
@@ -21,6 +21,6 @@ export const features = [
     text: "Smart Summaries",
     description:
       "After each study session, you will get a review of what you have studied, you can ask anything about the session, and Lumina.ai will review it for you.",
-    alignment: "left" as "left",
+    alignment: "left" as const,
   },
 ];

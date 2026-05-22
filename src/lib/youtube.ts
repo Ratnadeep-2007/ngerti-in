@@ -13,7 +13,7 @@ export async function suggestYouTubeVideos(
   context: string,
 ): Promise<YouTubeVideo[]> {
   try {
-    const model = getGeminiModel("gemini-1.5-flash");
+    const model = getGeminiModel("gemini-3.5-flash");
     const prompt = `
       You are an educational assistant. Given a context from a study session, suggest exactly 3 relevant educational YouTube videos. 
       Respond in valid JSON array of objects: {"videos": [{"title": "...", "url": "...", "thumbnail": "..."}]}. 

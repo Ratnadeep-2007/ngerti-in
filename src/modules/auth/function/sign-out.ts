@@ -1,9 +1,7 @@
-import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
-export const onLogout = () => {
-  const router = useRouter();
-
+export const onLogout = (router: AppRouterInstance) => {
   authClient.signOut({
     fetchOptions: {
       onSuccess: () => {
