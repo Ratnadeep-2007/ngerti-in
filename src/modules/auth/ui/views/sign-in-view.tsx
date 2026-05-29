@@ -56,7 +56,7 @@ const SignInView = () => {
         onError: (error) => {
           setError(error.error.message || "An error occurred while signing in");
           setPending(false);
-          console.error("Sign in error:", error);
+          console.error("Sign in error details:", error);
         },
       },
     );
@@ -79,7 +79,7 @@ const SignInView = () => {
         onError: (error) => {
           setError(error.error.message || "An error occurred while signing in");
           setPending(false);
-          console.error("Sign in error:", error);
+          console.error("Sign in error details:", error);
         },
       },
     );

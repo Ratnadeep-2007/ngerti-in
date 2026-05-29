@@ -8,7 +8,15 @@ export const createTRPCContext = cache(async () => {
   /**
    * @see: https://trpc.io/docs/server/context
    */
-  return {};
+  const h = await headers();
+  const session = await auth.api.getSession({
+    headers: h,
+  });
+
+  return {
+    session,
+    headers: h,
+  };
 });
 // Avoid exporting the entire t-object
 // since it's not very descriptive.
@@ -35,14 +43,8 @@ export const createTRPCRouter = t.router;
 export const createCallerFactory = t.createCallerFactory;
 export const baseProcedure = t.procedure;
 export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
-  const h = await headers();
-  const session = await auth.api.getSession({
-    headers: h,
-  });
-
-  if (!session) {
+  if (!ctx.session) {
     console.warn("🔐 [TRPC] Unauthorized attempt - No session found");
-    console.log("📄 [TRPC] Headers received:", Array.from(h.keys()));
     throw new TRPCError({
       code: "UNAUTHORIZED",
       message: "You must be logged in to access this resource.",
@@ -52,7 +54,7 @@ export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
   return next({
     ctx: {
       ...ctx,
-      userId: session,
+      userId: ctx.session,
     },
   });
 });

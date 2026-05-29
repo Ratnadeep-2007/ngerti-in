@@ -8,6 +8,8 @@ import {
 import {
   Mic,
   MicOff,
+  Video,
+  VideoOff,
   PhoneOff,
   Palette,
   Frown,
@@ -42,8 +44,9 @@ export const CallActive = ({
     trpc.meetings.update.mutationOptions(),
   );
 
-  const { useMicrophoneState } = useCallStateHooks();
-  const { microphone, isMute } = useMicrophoneState();
+  const { useMicrophoneState, useCameraState } = useCallStateHooks();
+  const { microphone, isMute: isMicMute } = useMicrophoneState();
+  const { camera, isMute: isCameraMute } = useCameraState();
 
   const handleConfused = useCallback(
     async (source: "manual" | "proactive" = "manual") => {
@@ -86,7 +89,7 @@ export const CallActive = ({
 
   const handleMicToggle = async () => {
     try {
-      if (isMute) {
+      if (isMicMute) {
         await microphone.enable();
       } else {
         await microphone.disable();
@@ -95,6 +98,21 @@ export const CallActive = ({
       console.error(err);
       toast.error(
         "Could not access microphone. Please check your browser permissions.",
+      );
+    }
+  };
+
+  const handleCameraToggle = async () => {
+    try {
+      if (isCameraMute) {
+        await camera.enable();
+      } else {
+        await camera.disable();
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error(
+        "Could not access camera. Please check your browser permissions.",
       );
     }
   };
@@ -147,16 +165,33 @@ export const CallActive = ({
         <button
           onClick={handleMicToggle}
           className={`p-3 rounded-full transition-all duration-200 ${
-            isMute
+            isMicMute
               ? "bg-red-500 hover:bg-red-600 text-white"
               : "bg-white/10 hover:bg-white/20 text-white"
           }`}
-          title={isMute ? "Unmute" : "Mute"}
+          title={isMicMute ? "Unmute" : "Mute"}
         >
-          {isMute ? (
+          {isMicMute ? (
             <MicOff className="w-5 h-5" />
           ) : (
             <Mic className="w-5 h-5" />
+          )}
+        </button>
+
+        {/* Camera Toggle */}
+        <button
+          onClick={handleCameraToggle}
+          className={`p-3 rounded-full transition-all duration-200 ${
+            isCameraMute
+              ? "bg-red-500 hover:bg-red-600 text-white"
+              : "bg-white/10 hover:bg-white/20 text-white"
+          }`}
+          title={isCameraMute ? "Turn Camera On" : "Turn Camera Off"}
+        >
+          {isCameraMute ? (
+            <VideoOff className="w-5 h-5" />
+          ) : (
+            <Video className="w-5 h-5" />
           )}
         </button>
 

@@ -37,7 +37,7 @@ const page = async ({ searchParams }: Props) => {
   }
 
   const queryClient = getQueryClient();
-  void queryClient.prefetchQuery(
+  await queryClient.prefetchQuery(
     trpc.meetings.getMany.queryOptions({ ...filters }),
   );
 
