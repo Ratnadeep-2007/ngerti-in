@@ -37,6 +37,9 @@ const ExcalidrawWrapper = ({
   const { mutateAsync: updateAgent } = useMutation(
     trpc.agents.update.mutationOptions(),
   );
+  const { mutateAsync: updateMeeting } = useMutation(
+    trpc.meetings.update.mutationOptions(),
+  );
 
   // SOLUSI: Validasi aman di sini
   const safeInitialData = {
@@ -126,18 +129,12 @@ const ExcalidrawWrapper = ({
         });
       }
 
-      // 3. Update Agent Prompt to trigger AI explanation
-      const agent = await queryClient.fetchQuery(
-        trpc.agents.getOne.queryOptions({ id: agentId }),
-      );
-      const newPrompt = `${agent.prompt}\n\n[CONTEXT: Student just uploaded a homework image. Extracted text is below. Please explain this problem immediately in a step-by-step manner as if you are looking at it on the whiteboard.]\n\nProblem text:\n${text}`;
+      // 3. Update Meeting Prompt to trigger AI explanation
+      const newPrompt = `[CONTEXT: Student just uploaded a homework image. Extracted text is below. Please explain this problem immediately in a step-by-step manner as if you are looking at it on the whiteboard.]\n\nProblem text:\n${text}`;
 
-      await updateAgent({
-        id: agentId,
-        name: agent.name,
-        subject: agent.subject,
-        prompt: newPrompt,
-        language: agent.language,
+      await updateMeeting({
+        id: meetingId,
+        currentPrompt: newPrompt,
       });
 
       setAiResponse("Problem scanned! The AI tutor is now analyzing it...");

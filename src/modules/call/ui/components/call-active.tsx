@@ -17,12 +17,14 @@ import {
   BrainCircuit,
   UserPlus,
   Power,
+  Trash2,
 } from "lucide-react";
 import { useCallback } from "react";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEmotionDetection } from "../../hooks/use-emotion-detection";
+import { useRouter } from "next/navigation";
 
 interface CallActiveProps {
   meetingName: string;
@@ -45,9 +47,13 @@ export const CallActive = ({
 }: CallActiveProps) => {
   const call = useCall();
   const trpc = useTRPC();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { mutateAsync: updateMeeting } = useMutation(
     trpc.meetings.update.mutationOptions(),
+  );
+  const { mutateAsync: removeMeeting } = useMutation(
+    trpc.meetings.remove.mutationOptions(),
   );
 
   const isOwner = userId === creatorId;
@@ -149,6 +155,23 @@ export const CallActive = ({
     const url = window.location.href;
     navigator.clipboard.writeText(url);
     toast.success("Meeting link copied to clipboard!");
+  };
+
+  const handleRemove = async () => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this meeting permanently? This action cannot be undone.",
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await removeMeeting({ id: meetingId });
+      await call?.leave();
+      toast.success("Meeting deleted successfully");
+      router.push("/dashboard");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to delete meeting");
+    }
   };
 
   return (

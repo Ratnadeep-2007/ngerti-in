@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         ? imageBase64.split(",")[1]
         : imageBase64;
 
-      const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "models/gemini-3.5-flash" });
       const result = await model.generateContent([
         "Extract and transcribe all text visible in this whiteboard image. Only return the text content, no explanations:",
         {
@@ -99,8 +99,6 @@ export async function POST(req: NextRequest) {
 
   // 5. Generate AI response (OpenAI)
   const updatedPrompt = `
-${agent.prompt}
-
 [WHITEBOARD CONTEXT - LIVE UPDATE]
 ${whiteboardSummary}${kbContext}
 
@@ -108,12 +106,12 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
 `;
 
   await db
-    .update(agents)
+    .update(meetings)
     .set({
-      prompt: updatedPrompt,
+      currentPrompt: updatedPrompt,
       updatedAt: new Date(),
     })
-    .where(eq(agents.id, agent.id));
+    .where(eq(meetings.id, meetingId));
 
   // 6. Suggest YouTube Videos (RAG-enhanced context)
   try {

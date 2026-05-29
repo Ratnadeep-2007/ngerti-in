@@ -164,66 +164,81 @@ const pollAgentPrompt = inngest.createFunction(
 
       // ✅ Create connection and loop inside step.run()
       await step.run("connect-and-update-loop", async () => {
+        console.log("🛠️ [INNGEST] Upserting agent in Stream:", agent.id);
+        // Ensure agent is upserted in Stream Video
+        await streamVideo.upsertUsers([
+          {
+            id: agent.id,
+            name: agent.name,
+            role: "admin",
+            image: `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${agent.name}`,
+          },
+        ]);
+
+        console.log("🛠️ [INNGEST] Connecting OpenAI to call:", meetingId);
         const call = streamVideo.video.call("default", meetingId);
-        const realtimeClient = await streamVideo.video.connectOpenAi({
-          call,
-          openAiApiKey: process.env.OPENAI_API_KEY!,
-          agentUserId: agentId,
-        });
+        
+        try {
+          const realtimeClient = await streamVideo.video.connectOpenAi({
+            call,
+            openAiApiKey: process.env.OPENAI_API_KEY!,
+            agentUserId: agent.id,
+          });
 
-        console.log("✅ Agent connected to call:", agentId);
+          console.log("✅ [INNGEST] Agent connected to call successfully:", agent.id);
 
-        // ✅ Set up event listener ONCE outside the loop
-        realtimeClient.on("conversation.updated", (instruction: unknown) => {
-          console.log(`📡 received conversation.updated`, instruction);
-        });
+          // ✅ Set up event listener ONCE outside the loop
+          realtimeClient.on("conversation.updated", (instruction: unknown) => {
+            console.log(`📡 [INNGEST] received conversation.updated`, instruction);
+          });
 
-        // ✅ Wait for connection to be ready
-        await new Promise(resolve => setTimeout(resolve, 2000));
+          // ✅ Wait for connection to be ready
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
-        let previousPrompt = "";
+          let previousPrompt = "";
 
-        // ✅ Loop inside step.run() - connection dibuat sekali, update berkali-kali
-        while (true) {
-          try {
-            const [latestAgent] = await db
-              .select()
-              .from(agents)
-              .where(eq(agents.id, agentId));
+          // ✅ Loop inside step.run() - connection dibuat sekali, update berkali-kali
+          while (true) {
+            try {
+              const [latestAgent] = await db
+                .select()
+                .from(agents)
+                .where(eq(agents.id, agentId));
 
-            const [latestMeeting] = await db
-              .select({ currentPrompt: meetings.currentPrompt })
-              .from(meetings)
-              .where(eq(meetings.id, meetingId));
+              const [latestMeeting] = await db
+                .select({ currentPrompt: meetings.currentPrompt })
+                .from(meetings)
+                .where(eq(meetings.id, meetingId));
 
-            if (latestAgent) {
-              const combinedPrompt = latestMeeting?.currentPrompt 
-                ? `${latestAgent.prompt}\n\n${latestMeeting.currentPrompt}`
-                : latestAgent.prompt;
+              if (latestAgent) {
+                const combinedPrompt = latestMeeting?.currentPrompt 
+                  ? `${latestAgent.prompt}\n\n${latestMeeting.currentPrompt}`
+                  : latestAgent.prompt;
 
-              // ✅ Only update if prompt has changed
-              if (combinedPrompt !== previousPrompt) {
-                console.log("🔄 Prompt changed, updating session...");
-                console.log("📝 New combined prompt:", combinedPrompt.substring(0, 200) + "...");
-                
-                await realtimeClient.updateSession({
-                  instructions: combinedPrompt,
-                });
-                
-                previousPrompt = combinedPrompt;
-                console.log("✅ Session updated with new combined instructions");
-              } else {
-                console.log("⏭️ No prompt change, skipping update");
+                // ✅ Only update if prompt has changed
+                if (combinedPrompt !== previousPrompt) {
+                  console.log("🔄 [INNGEST] Prompt changed, updating session...");
+                  
+                  await realtimeClient.updateSession({
+                    instructions: combinedPrompt,
+                  });
+                  
+                  previousPrompt = combinedPrompt;
+                  console.log("✅ [INNGEST] Session updated with new combined instructions");
+                }
               }
-            }
 
-            // Wait 1 second before next check
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-          } catch (updateError) {
-            console.error("❌ Update error:", updateError);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+              // Wait 1 second before next check
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+            } catch (updateError) {
+              console.error("❌ [INNGEST] Update error:", updateError);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
           }
+        } catch (connError) {
+          console.error("❌ [INNGEST] Failed to connect OpenAI to Stream:", connError);
+          throw connError;
         }
       });
 
