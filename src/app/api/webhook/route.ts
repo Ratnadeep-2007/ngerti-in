@@ -284,7 +284,7 @@ export async function POST(req: NextRequest) {
           parts: [{ text: message.text || "" }],
         }));
 
-      const model = getGeminiModel("gemini-3.5-flash");
+      const model = getGeminiModel("models/gemini-3.5-flash");
       const chat = model.startChat({
         history: history,
         systemInstruction: instructions,

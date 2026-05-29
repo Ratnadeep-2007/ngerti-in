@@ -105,7 +105,7 @@ const meetingsProcessing = inngest.createFunction(
     // ✅ Parallel 2: Generate Gemini summary and fetch YouTube videos simultaneously
     const [aiOutput, youtubeVideos] = await Promise.all([
       step.run("generate-gemini-summary", async () => {
-        const model = getGeminiModel("gemini-3.5-flash", { responseMimeType: "application/json" });
+        const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
         const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
         const result = await model.generateContent(prompt);
         return summarizerOutputSchema.parse(JSON.parse(result.response.text()));
