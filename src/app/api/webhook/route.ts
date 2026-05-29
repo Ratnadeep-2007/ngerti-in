@@ -55,14 +55,15 @@ export async function POST(req: NextRequest) {
   }
 
   const eventType = (payload as Record<string, unknown>)?.type;
-  console.log("🔔 Event type:", eventType);
+  console.log("🔔 [WEBHOOK] Event type received:", eventType);
 
   if (eventType === "call.session_started") {
     const event = payload as CallSessionStartedEvent;
     const meetingId = event.call.custom?.meetingId;
-    console.log("📞 Call session started for meeting:", meetingId);
+    console.log("📞 [WEBHOOK] Call session started! Meeting ID:", meetingId);
 
     if (!meetingId) {
+      console.warn("⚠️ [WEBHOOK] Missing meetingId in event custom data");
       return NextResponse.json(
         { error: "Missing meetingId in call session started event" },
         { status: 400 },
