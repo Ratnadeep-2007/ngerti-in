@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://arena-navy-refurbished-stocks.trycloudflare.com"><strong>🌐 Live Demo (Active)</strong></a> ·
   <a href="https://devpost.com/software/ngerti-in"><strong>DevPost</strong></a> ·
   <a href="https://drive.google.com/file/d/1LZ0iFlpiVga2wncryG2UlqN82ca6DUkB/view?usp=sharing"><strong>Pitch Deck</strong></a> ·
   <a href="https://www.youtube.com/watch?v=DiydbfVfX2s"><strong>Video Demo</strong></a>
