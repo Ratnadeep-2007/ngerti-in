@@ -1,106 +1,89 @@
 <picture>
-<img width="1920" alt="Lumina.ai" src="https://github.com/user-attachments/assets/10956cdd-4f57-4c45-bf65-913430fccb46" />
+  <img width="1920" alt="Lumina.ai" src="https://github.com/user-attachments/assets/10956cdd-4f57-4c45-bf65-913430fccb46" />
 </picture>
-<h1 align="center">Lumina.ai - Your Personal AI Study Tutor 🤖</h1>
 
-
-**GarudaHacks 6.0 Hackathon - 3rd Place Winner (Education & Equity Track)**
-
-Lumina.ai is an innovative AI-powered learning platform designed to provide personalized and interactive learning experiences. This platform connects students with AI tutors for various subjects, facilitating engaging and effective learning sessions through real-time voice integration and interactive whiteboard explanations.
-
-🏆 Lumina.ai was awarded 3rd Place in the Education & Equity Track at GarudaHacks 6.0, a high-intensity 30-hour hackathon that brings together developers and innovators from around the world to build impactful tech solutions.
-
-## 🚀 Background & Inspiration
-
-Have you ever struggled to understand a lecture in class? Or hesitated to ask questions for fear of being judged? You’re not alone. Many students worldwide face similar challenges. According to UNESCO, over 600 million people lack minimum proficiency in reading and mathematics, highlighting that the issue isn't just about access but also the methods of studying.
-
-We believe learning should be an active, engaging dialogue, not a passive, one way experience. What if you had a non judgmental tutor available 24/7 to help you understand complex topics?  With the advancements in AI, we saw an opportunity to create a tool that allows students to learn anytime and anywhere, in realtime. Lumina.ai was built to be that listening, responsive, and guiding learning companion.
-
-### Pain Points Addressed:
-
-  * Lack of access to quality education.
-  * Difficulty understanding classroom lectures.
-  * Fear of being judged when asking questions.
-  * Passive and ineffective learning from platforms like YouTube.
-  * Inability to afford private tutoring.
-
-## ✨ Our Solution
-
-Lumina.ai is an AI-powered learning platform that helps students understand what they are learning through interactive voice integration and realtime whiteboard explanations. For students who are afraid to ask questions, struggle with class material, or cannot afford private tutoring, Lumina.ai offers an active and personal learning experience, as if you had your own private tutor available anytime. This isn't just passive video learning, it's about real dialogue and genuine understanding.
-
-Our goal is to leverage AI to make education personal, accessible, and effective for every student. We believe understanding is a right, not a privilege, and with Lumina.ai, we create an opportunity for every student to succeed, regardless of their background. 
-
-
-## Features
-
-  * **AI Talk:** An interactive AI who can answer students with real-time voices.
-  * **Interactive Whiteboard:** The AI can write and explain directly on the whiteboard.
-  * **Automatic Summary:** After the study session is done, the user can ask for a summary.
-  * **Export:** Users can export the whiteboard to a PNG format.
-  * **AI-Powered Tutoring:** Get instant help from AI tutors in a variety of subjects including Math, Bahasa Indonesia, Natural Science, Social Science, and English.
-  * **Interactive Video Calls:** Engage in one-on-one video sessions with AI tutors for a more personalized learning experience.
-  * **Session Recordings and Transcripts:** Access recordings and transcripts of your past sessions to review and reinforce your learning.
-  * **Automated Summaries:** Receive AI-generated summaries of your tutoring sessions to quickly recap the key concepts covered.
-  * **Ask AI:** After the call end, you still can chat with the AI based on the meet you just do.
-
-## What Makes It Difference?
-Lumina.ai stands out with its unique, interactive features:
-
-| Feature | Lumina.ai | ChatGPT | Khan Academy | YouTube |
-| :--- | :---: | :---: | :---: | :---: |
-| **Real-time Whiteboard Activations** | ✅ | ❌ | ❌ | ❌ |
-| **Personalized & On-Demand** | ✅ | ✅ | ❌ | ❌ |
-| **Two-way Communications** | ✅ | ✅ | ❌ | ❌ |
-| **Learn Anywhere, Anytime** | ✅ | ✅ | ✅ | ✅ |
-
-
-## 💻 Tech Stack
-
-Lumina.ai is built with a modern and robust technology stack to deliver a seamless and real-time learning experience.
-
-  * **Frontend:** [Next.js](https://nextjs.org/), [React](https://react.dev/), [TypeScript](https://www.typescriptlang.org/), [Tailwind CSS](https://tailwindcss.com/)
-  * **Backend:** [Next.js API Routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes), [tRPC](https://trpc.io/)
-  * **Database:** [Drizzle ORM](https://orm.drizzle.team/) with a [PostgreSQL database](https://www.postgresql.org/)
-  * **Authentication:** [better-auth](https://www.better-auth.com/)
-  * **Video Streaming:** [Video Stream SDK](https://getstream.io/video/)
-  * **Whiteboard:** [Excalidraw](https://excalidraw.com/)
-  * **AI:** [Inngest](https://www.inngest.com/), [OpenAI](https://openai.com/)
-
-
-## DevPost
-Check out the DevPost we presented at GarudaHacks 6.0 to learn more about our vision, process, and the problem we're solving.
-
-[**View on DevPost**](https://devpost.com/software/ngerti-in)
-
-## Pitch Deck
-
-Check out the pitch deck we presented at GarudaHacks 6.0 to learn more about our vision, process, and the problem we're solving.
-
-[**View Pitch Deck Here**](https://drive.google.com/file/d/1LZ0iFlpiVga2wncryG2UlqN82ca6DUkB/view?usp=sharing)
-
-## 🎥 Video Demo
-See Lumina.ai in action! This demo showcases how a student can interact with an AI tutor to solve a math problem in real-time.
+<h1 align="center">Lumina.ai - The Future of Personalized AI Tutoring 🤖</h1>
 
 <p align="center">
-<a href="https://www.youtube.com/watch?v=DiydbfVfX2s">
-<img src="https://img.youtube.com/vi/DiydbfVfX2s/hqdefault.jpg" alt="Lumina.ai Product Demo" width="75%">
-<br/>
-<em>Product Demo 1</em>
-</a>
+  <strong>🏆 3rd Place Winner @ GarudaHacks 6.0 (Education & Equity Track)</strong>
 </p>
+
 <p align="center">
-<a href="https://www.youtube.com/watch?v=4FQ4IhksxB4">
-<img src="https://img.youtube.com/vi/4FQ4IhksxB4/hqdefault.jpg" alt="Lumina.ai Product Demo" width="75%">
-<br/>
-<em>Product Demo 2</em>
-</a>
+  <a href="https://devpost.com/software/ngerti-in"><strong>DevPost</strong></a> ·
+  <a href="https://drive.google.com/file/d/1LZ0iFlpiVga2wncryG2UlqN82ca6DUkB/view?usp=sharing"><strong>Pitch Deck</strong></a> ·
+  <a href="https://www.youtube.com/watch?v=DiydbfVfX2s"><strong>Video Demo</strong></a>
 </p>
+
+---
+
+## 🧐 The Problem: Passive Learning & The "Shame Barrier"
+Traditional education is often a one-way street. Students struggle with:
+- **Passive Consumption:** Watching YouTube or lectures without interaction leads to low retention.
+- **Fear of Judgment:** Hesitation to ask "simple" questions in front of peers or teachers.
+- **Accessibility Gap:** Quality 1-on-1 tutoring is expensive and geographically limited.
+- **Static Content:** Textbooks can't listen, react, or explain a specific image of homework.
+
+## 💡 Our Solution: Lumina.ai
+Lumina.ai isn't just a chatbot; it's a **Living Learning Companion**. We bridge the gap between AI intelligence and human empathy through:
+- **Two-Way Voice Dialogue:** Real-time natural conversation with an AI tutor.
+- **Interactive Shared Whiteboard:** The AI "sees" and "draws" alongside the student.
+- **Proactive Empathy:** Emotion detection stops the session if you look confused.
+- **Multimodal Learning:** Snap a photo of your homework, and the AI solves it on the board instantly.
+
+---
+
+## ✨ Key Features (Judge's Guide)
+
+### 🎙️ AI Real-time Voice & Vision
+Engage in seamless, low-latency voice conversations. The AI doesn't just talk; it understands context and maintains a personal tutor persona.
+
+### ✍️ Shared Whiteboard (Excalidraw)
+The first platform to combine **Real-time AI Voice** with a **Shared Interactive Canvas**. The AI can draw diagrams, solve equations, and annotate your uploads.
+
+### 📸 "Snap, Drop, & Solve" (OCR)
+Upload a photo of your textbook or homework. Using advanced OCR, Lumina.ai extracts the text and equations, places them on the board, and begins a step-by-step vocal explanation.
+
+### 🧠 Automated Mastery & Quizzes
+Once a session ends, Inngest background agents process the entire transcript to generate:
+- **Dynamic Summaries:** Key concepts and takeaways.
+- **Adaptive Quizzes:** Test your retention immediately.
+- **Knowledge Map:** A visual 3D graph of your learning progress.
+
+### 😟 Confusion Detection
+Using `face-api.js`, Lumina.ai monitors facial cues. If you look frustrated or lost, the AI tutor proactively offers a simpler explanation.
+
+---
+
+## 🛠️ Technical Excellence & Orchestration
+
+Lumina.ai is built on a high-performance **Real-time AI Stack**:
+
+- **Core:** Next.js 15 (App Router), TypeScript, Tailwind CSS 4.
+- **AI Orchestration:**
+  - **Voice:** Stream Video SDK + Stream OpenAI Realtime API.
+  - **Background Jobs:** **Inngest** for async summary and quiz generation.
+  - **LLM:** Google Gemini 1.5 Pro (for reasoning) & GPT-4o (for orchestration).
+- **Data & Ops:**
+  - **Database:** Neon (Serverless Postgres) + Drizzle ORM.
+  - **Auth:** Better Auth (Google OAuth).
+  - **Infrastructure:** Cloudflare Tunnels for local-to-remote webhook handling.
+- **Edge Capabilities:** OCR via `tesseract.js` and client-side emotion analysis via `face-api.js`.
+
+---
+
+## 🎥 Demos
+
+| Concept | Video Link |
+| :--- | :--- |
+| **Product Demo 1** | [Watch on YouTube](https://www.youtube.com/watch?v=DiydbfVfX2s) |
+| **Product Demo 2** | [Watch on YouTube](https://www.youtube.com/watch?v=4FQ4IhksxB4) |
+
+---
 
 ## 📸 Screenshots
-Here’s a sneak peek into the Lumina.ai platform. Click on the categories below to see the screenshots.
 
 <details>
-<summary><strong>Dashboard &amp; Setup</strong></summary>
+<summary><strong>Dashboard & Setup</strong></summary>
 <br/>
 <table>
 <tr>
@@ -113,163 +96,62 @@ Here’s a sneak peek into the Lumina.ai platform. Click on the categories below
 <img src="https://github.com/user-attachments/assets/95660b68-49d6-4307-b342-ee2ac080fb9e" alt="Tutor Dashboard" width="100%">
 </td>
 </tr>
-<tr>
-<td align="center">
-<strong>Create A New Tutor</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/565ae723-9f5e-4404-a98e-d2ae64def286" alt="Create A New Tutor" width="100%">
-</td>
-<td align="center">
-<strong>Create A New Meeting</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/54cf7ad0-c727-4aa1-ab87-ffef27fbf2df" alt="Create A New Meeting" width="100%">
-</td>
-</tr>
 </table>
 </details>
 
 <details>
-<summary><strong>Meeting Experience</strong></summary>
+<summary><strong>The Learning Experience</strong></summary>
 <br/>
 <table>
-<tr>
-<td align="center">
-<strong>Join Meeting Lobby</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/7fbf8f68-9ba5-4f26-a9d1-391f959b8af9" alt="Join Meeting Lobby" width="100%">
-</td>
-<td align="center">
-<strong>Meeting View</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/542608bd-1164-4ce6-afdf-dfbb1c62445c" alt="Meeting View" width="100%">
-</td>
-</tr>
 <tr>
 <td align="center">
 <strong>Meeting Whiteboard</strong><br/><br/>
 <img src="https://github.com/user-attachments/assets/027a4046-881f-490a-acff-929fb165ee01" alt="Meeting Whiteboard" width="100%">
 </td>
- </td>
-<td align="center">
-
-</td>
-</tr>
-</table>
-</details>
-
-<details>
-<summary><strong>Post-Meeting Features</strong></summary>
-<br/>
-<table>
-<tr>
 <td align="center">
 <strong>Meeting Summary</strong><br/><br/>
 <img src="https://github.com/user-attachments/assets/9f3a368c-c29c-47e3-8455-94949b89733e" alt="Meeting Summary" width="100%">
 </td>
-<td align="center">
-<strong>Meeting Transcription</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/740e074a-957a-47a5-9dd8-cb9df40d35d7" alt="Meeting Transcription" width="100%">
-</td>
-</tr>
-<tr>
-<td align="center">
-<strong>Meeting Recording</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/a39ade07-a10c-45d1-a48d-ed050650b2dd" alt="Meeting Recording" width="100%">
-</td>
- <td align="center">
-<strong>Meeting Chat</strong><br/><br/>
-<img src="https://github.com/user-attachments/assets/b08277ae-fdae-40ce-8bec-0a8f5547dd60" alt="Meeting Chat" width="100%">
-
 </tr>
 </table>
 </details>
 
-## 👥 Meet the Team
+---
 
-  * **Ratnadeep Patil** - Product Manager
-  * **Rachit Kothadia** - AI Engineer, Backend
-  * **Siddhi Shendge** - Frontend
+## 👥 The Team
+- **Ratnadeep Patil** - Product Manager
+- **Rachit Kothadia** - AI & Backend Architect
+- **Siddhi Shendge** - Frontend Engineer
 
------
+---
 
 ## 🚀 Getting Started
 
-To get a local copy up and running, follow these simple steps.
+Lumina.ai requires **Cloudflare Tunnels** to handle real-time Stream webhooks.
 
-### Prerequisites
+1. **Clone & Install:**
+   ```bash
+   git clone https://github.com/Ratnadeep-2007/ngerti-in.git
+   npm install
+   ```
+2. **Environment:**
+   Copy `.env.example` and fill in your Neon, Better Auth, Stream, and Gemini keys.
+3. **Database:**
+   ```bash
+   npm run db:push
+   ```
+4. **Run Server:**
+   ```bash
+   npm run dev # Port 3006
+   ```
+5. **Tunneling (Mandatory):**
+   ```bash
+   cloudflared tunnel --url http://localhost:3006
+   ```
+   *Update `NEXT_PUBLIC_APP_URL` in `.env` with the tunnel URL and restart.*
 
-Make sure you have the following software installed on your machine:
+---
 
-  * Node.js (v18 or higher is recommended)
-  * npm or yarn
-  * cloudflared
-
-### Installation
-
-1.  Clone the repo
-    ```sh
-    git clone https://github.com/your-username/your-repo-name.git
-    ```
-
-    cd ngerti-in
-    ```
-
-2.  **Install Dependencies**
-    Run the following command to install all the required packages.
-
-    ```sh
-    npm install --legacy-peer-deps
-    ```
-
-3.  **Configure Environment Variables**
-    Create a `.env` file in the project's root directory by copying from `.env.example` (if it exists) or creating it from scratch. Fill in all the necessary credentials.
-
-    ```env
-    # You will get this URL from cloudflared in a later step
-    NEXT_PUBLIC_APP_URL=""
-
-    # Database, Authentication, and other Service Credentials
-    DATABASE_URL=""
-    BETTER_AUTH_SECRET=""
-    BETTER_AUTH_URL=""
-    GOOGLE_CLIENT_ID=""
-    GOOGLE_CLIENT_SECRET=""
-    NEXT_PUBLIC_STREAM_VIDEO_API_KEY=""
-    STREAM_VIDEO_SECRET=""
-    OPENAI_API_KEY=""
-    NEXT_PUBLIC_STREAM_CHAT_API_KEY=""
-    STREAM_CHAT_SECRET_KEY=""
-    ```
-
-4.  **Sync the Database**
-    After filling in the `DATABASE_URL` in your `.env` file, run the following script to sync your database schema using Drizzle Kit.
-
-    ```sh
-    npm run db:push
-    ```
-
-5.  **Run Background Services**
-    Open **two new terminals** to run Inngest and cloudflared separately.
-
-      * **In Terminal 1 (Inngest):**
-        Run the Inngest dev server to handle background jobs and events.
-
-        ```sh
-        npm run dev:inngest
-        ```
-
-      * **In Terminal 2 (Cloudflare Tunnel):**
-        Run cloudflared to expose your local server to the internet, which is required for webhooks to function correctly.
-
-        ```sh
-        cloudflared tunnel --url http://localhost:3000
-        ```
-
-        Once this command is running, **copy the forwarding URL** provided by cloudflared (e.g., `https://random-string.trycloudflare.com`) and **paste it** as the value for the `NEXT_PUBLIC_APP_URL` variable in your `.env` file.
-
-6.  **Run the Main Development Server**
-    Return to your main terminal and run the Next.js development server with Turbopack.
-
-    ```sh
-    npm run dev
-    ```
-
-7.  **Open the Application**
-    Open [http://localhost:3000](https://www.google.com/search?q=http://localhost:3000) in your browser to see the result. Your application is now running locally\!
-
+<p align="center">
+  Built with ❤️ for GarudaHacks 6.0
+</p>
