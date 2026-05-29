@@ -68,5 +68,10 @@ The Inngest UI will be available at `http://localhost:8288`.
 - **Post-Meeting Summary**: After leaving a call, Inngest will process the transcript to generate a summary and quiz.
 
 ## 7. Troubleshooting
+- **ERR_NAME_NOT_RESOLVED (Cloudflare Tunnel)**: Occurs when the temporary tunnel URL expires or is restarted.
+    1. Start a new tunnel: `cloudflared tunnel --url http://localhost:3006`.
+    2. Copy the new `https://*.trycloudflare.com` URL.
+    3. Update `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` in `.env`.
+    4. **Restart the Next.js dev server**.
 - **AI Agent Not Joining**: In a local-only setup (using `localhost`), the AI will **not** automatically join the call because Stream Video webhooks cannot reach your machine. To enable AI participation, you must use a public tunnel (like Cloudflare).
 - **tRPC Errors**: If you encounter `useUtils` errors, ensure you are using the `queryClient.fetchQuery` pattern.

@@ -20,6 +20,7 @@ interface Props {
   userId: string;
   userName: string;
   userImage: string;
+  creatorId: string;
 }
 
 export const CallConnect = ({
@@ -29,6 +30,7 @@ export const CallConnect = ({
   userId,
   userName,
   userImage,
+  creatorId,
 }: Props) => {
   const trpc = useTRPC();
 
@@ -66,7 +68,7 @@ export const CallConnect = ({
     setCall(_call);
 
     return () => {
-      client.disconnectUser();
+      _call.leave();
       setCall(undefined);
     };
   }, [client, meetingId]);
@@ -119,7 +121,12 @@ export const CallConnect = ({
     <>
       <StreamVideo client={client}>
         <StreamCall call={call}>
-          <CallUI meetingName={meetingName} agentId={agentId} />
+          <CallUI
+            meetingName={meetingName}
+            agentId={agentId}
+            creatorId={creatorId}
+            userId={userId}
+          />
         </StreamCall>
       </StreamVideo>
     </>

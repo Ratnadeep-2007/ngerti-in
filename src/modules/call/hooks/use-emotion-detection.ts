@@ -30,6 +30,7 @@ export const useEmotionDetection = (
 
   // Load models on mount
   useEffect(() => {
+    if (!enabled) return;
     let isMounted = true;
 
     const loadModels = async () => {

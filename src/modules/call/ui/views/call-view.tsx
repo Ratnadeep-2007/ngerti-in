@@ -32,6 +32,7 @@ export const CallView = ({ meetingId }: Props) => {
       meetingId={meetingId}
       meetingName={data.name}
       agentId={data.agent.id}
+      creatorId={data.userId}
     />
   );
 };

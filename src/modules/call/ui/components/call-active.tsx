@@ -15,6 +15,8 @@ import {
   Frown,
   Brain,
   BrainCircuit,
+  UserPlus,
+  Power,
 } from "lucide-react";
 import { useCallback } from "react";
 import { useTRPC } from "@/trpc/client";
@@ -28,6 +30,8 @@ interface CallActiveProps {
   isWhiteboardOpen?: boolean;
   agentId?: string;
   meetingId: string;
+  creatorId: string;
+  userId: string;
 }
 
 export const CallActive = ({
@@ -36,6 +40,8 @@ export const CallActive = ({
   isWhiteboardOpen,
   agentId,
   meetingId,
+  creatorId,
+  userId,
 }: CallActiveProps) => {
   const call = useCall();
   const trpc = useTRPC();
@@ -43,6 +49,8 @@ export const CallActive = ({
   const { mutateAsync: updateMeeting } = useMutation(
     trpc.meetings.update.mutationOptions(),
   );
+
+  const isOwner = userId === creatorId;
 
   const { useMicrophoneState, useCameraState } = useCallStateHooks();
   const { microphone, isMute: isMicMute } = useMicrophoneState();
@@ -119,6 +127,28 @@ export const CallActive = ({
 
   const handleLeave = async () => {
     await call?.leave();
+  };
+
+  const handleEndMeeting = async () => {
+    if (!call) return;
+    try {
+      await updateMeeting({
+        id: meetingId,
+        status: "completed",
+        endedAt: new Date().toISOString() as any,
+      });
+      await call.endCall();
+      toast.success("Meeting ended for everyone");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to end meeting");
+    }
+  };
+
+  const handleInvite = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url);
+    toast.success("Meeting link copied to clipboard!");
   };
 
   return (
@@ -230,14 +260,43 @@ export const CallActive = ({
           <Frown className="w-5 h-5" />
         </button>
 
+        {/* Invite Button */}
+        <button
+          onClick={handleInvite}
+          className="p-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-all duration-200"
+          title="Invite Others"
+        >
+          <UserPlus className="w-5 h-5" />
+        </button>
+
         {/* Leave Call */}
         <button
           onClick={handleLeave}
-          className="p-3 rounded-full bg-red-500 hover:bg-red-600 text-white transition-all duration-200"
+          className="p-3 rounded-full bg-yellow-600 hover:bg-yellow-700 text-white transition-all duration-200"
           title="Leave call"
         >
           <PhoneOff className="w-5 h-5" />
         </button>
+
+        {/* End Meeting (Owner only) */}
+        {isOwner && (
+          <>
+            <button
+              onClick={handleEndMeeting}
+              className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+              title="End meeting for everyone"
+            >
+              <Power className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleRemove}
+              className="p-3 rounded-full bg-gray-800 hover:bg-black text-white transition-all duration-200"
+              title="Delete meeting permanently"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

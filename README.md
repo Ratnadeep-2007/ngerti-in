@@ -182,15 +182,15 @@ Here’s a sneak peek into the Lumina.ai platform. Click on the categories below
 
 ## 👥 Meet the Team
 
-  * **[Muhammad Rifqi Ilham](https://www.linkedin.com/in/rifqi-ilham/)** - Product Manager
-  * **[Heraldo Arman](https://www.linkedin.com/in/heraldo-arman/)** - AI Engineer, Backend
-  * **[Valerian Hizkia Emmanuel](https://www.linkedin.com/in/valhize/)** - Frontend
+  * **Ratnadeep Patil** - Product Manager
+  * **Rachit Kothadia** - AI Engineer, Backend
+  * **Siddhi Shendge** - Frontend
 
 -----
 
 ## 🚀 Getting Started
 
-To get a local copy up and running, follow these simple steps. 
+To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
@@ -200,12 +200,13 @@ Make sure you have the following software installed on your machine:
   * npm or yarn
   * cloudflared
 
-### Installation & Setup
+### Installation
 
-1.  **Clone the Repository**
-
+1.  Clone the repo
     ```sh
-    git clone https://github.com/heraldoarman/ngerti-in.git
+    git clone https://github.com/your-username/your-repo-name.git
+    ```
+
     cd ngerti-in
     ```
 

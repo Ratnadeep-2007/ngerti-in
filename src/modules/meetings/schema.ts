@@ -5,6 +5,10 @@ export const meetingsInsertSchema = z.object({
   agentId: z.string().min(1, "Agent ID is required"),
   isPublic: z.boolean(),
   currentPrompt: z.string().optional(),
+  status: z
+    .enum(["upcoming", "active", "completed", "processing", "cancelled"])
+    .optional(),
+  endedAt: z.coerce.date().optional(),
 });
 
 export const meetingsUpdateSchema = meetingsInsertSchema.partial().extend({

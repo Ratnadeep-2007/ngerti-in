@@ -28,9 +28,13 @@ const ExcalidrawWrapper = dynamic(
 export const CallUI = ({
   meetingName,
   agentId,
+  creatorId,
+  userId,
 }: {
   meetingName: string;
   agentId: string;
+  creatorId: string;
+  userId: string;
 }) => {
   const call = useCall();
   const { useCallCallingState } = useCallStateHooks();
@@ -106,6 +110,8 @@ export const CallUI = ({
               isWhiteboardOpen={isWhiteboardOpen}
               agentId={agentId}
               meetingId={call?.id || ""}
+              creatorId={creatorId}
+              userId={userId}
             />
           </div>
 

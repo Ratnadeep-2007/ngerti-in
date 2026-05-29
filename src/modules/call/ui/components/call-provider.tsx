@@ -10,9 +10,15 @@ interface Props {
   meetingId: string;
   meetingName: string;
   agentId: string;
+  creatorId: string;
 }
 
-export const CallProvider = ({ meetingId, meetingName, agentId }: Props) => {
+export const CallProvider = ({
+  meetingId,
+  meetingName,
+  agentId,
+  creatorId,
+}: Props) => {
   const { data, isPending } = authClient.useSession();
 
   if (!data || isPending) {
@@ -71,6 +77,7 @@ export const CallProvider = ({ meetingId, meetingName, agentId }: Props) => {
           seed: data.user.name,
           variant: "initials",
         })}
+        creatorId={creatorId}
       />
     </div>
   );

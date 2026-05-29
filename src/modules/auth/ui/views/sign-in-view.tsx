@@ -23,7 +23,7 @@ import { useRouter } from "next/navigation";
 import { FaGoogle } from "react-icons/fa";
 
 const formSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email({ message: "Invalid email" }),
   password: z.string().min(1, { message: "Password is required" }),
 });
 

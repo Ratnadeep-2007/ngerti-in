@@ -121,6 +121,15 @@ export const meetingsRouter = createTRPCRouter({
         ? updateData
         : { currentPrompt: updateData.currentPrompt };
 
+      console.log("finalUpdateData", finalUpdateData);
+
+      if (Object.keys(finalUpdateData).length === 0 || Object.values(finalUpdateData).every(v => v === undefined)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No valid fields provided for update",
+        });
+      }
+
       const [updatedMeeting] = await db
         .update(meetings)
         .set(finalUpdateData)

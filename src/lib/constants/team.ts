@@ -1,20 +1,20 @@
 export const team = [
   {
     id: 1,
-    image: "/rifqi.png",
-    name: "Rifqi Ilham",
+    image: "/placeholder.avif",
+    name: "Ratnadeep Patil",
     role: "Project Manager",
   },
   {
     id: 2,
-    image: "/aldo.png",
-    name: "Heraldo Arman",
+    image: "/placeholder.avif",
+    name: "Rachit Kothadia",
     role: "Backend Developer, AI Engineer",
   },
   {
     id: 3,
-    image: "/rian.png",
-    name: "Valerian Hizkia E",
+    image: "/placeholder.avif",
+    name: "Siddhi Shendge",
     role: "Frontend Developer",
   },
 ];
