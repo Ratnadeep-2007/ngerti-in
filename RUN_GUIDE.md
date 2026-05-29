@@ -60,9 +60,22 @@ Since Stream Video SDK requires HTTPS for microphone/camera access and relies on
 ```bash
 cloudflared tunnel --url http://localhost:3006
 ```
-1. Copy the resulting `https://*.trycloudflare.com` URL.
-2. Update `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` in `.env` with this new URL.
-3. **Restart Terminal 1 (Next.js server)**.
+
+**⚠️ CRITICAL: You MUST update the URL in 3 places every time you restart the tunnel:**
+
+1.  **Local `.env` File**:
+    Update these two keys with your new `https://*.trycloudflare.com` URL:
+    ```env
+    NEXT_PUBLIC_APP_URL="https://your-new-url.trycloudflare.com"
+    BETTER_AUTH_URL="https://your-new-url.trycloudflare.com"
+    ```
+2.  **Stream Dashboard (Webhooks)**:
+    - Go to [Stream Dashboard](https://getstream.io/) -> Your App -> Video -> Webhooks.
+    - Set **Target URL** to: `https://your-new-url.trycloudflare.com/api/webhook`
+    - *Without this, the AI will never receive the signal to join the call.*
+3.  **Restart Servers**:
+    - **Restart Terminal 1** (Next.js server) so it picks up the new `.env` values.
+    - **Restart Terminal 3** (Inngest server).
 
 ### Terminal 3: Inngest Dev Server
 Lumina.ai uses Inngest for AI background tasks (like generating quiz summaries).
