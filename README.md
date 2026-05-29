@@ -1,5 +1,5 @@
 <picture>
-  <img width="1920" alt="Lumina.ai" src="https://github.com/user-attachments/assets/10956cdd-4f57-4c45-bf65-913430fccb46" />
+  <img width="1920" alt="Lumina.ai" src="./Lumina.ai(img).png" />
 </picture>
 
 <h1 align="center">Lumina.ai - The Future of Personalized AI Tutoring 🤖</h1>
