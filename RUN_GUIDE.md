@@ -14,14 +14,14 @@ Create a `.env` file in the root directory and add the following keys.
 ```env
 # App Configuration
 # NOTE: Use your public Cloudflare Tunnel URL here for camera/mic and webhooks
-NEXT_PUBLIC_APP_URL="https://deaf-manga-cashiers-shakira.trycloudflare.com"
+NEXT_PUBLIC_APP_URL="https://damaged-suite-reduction-cdna.trycloudflare.com"
 
 # Database (Neon PostgreSQL)
 DATABASE_URL="your_neon_db_url"
 
 # Authentication (Better Auth)
 BETTER_AUTH_SECRET="your_secret_here"
-BETTER_AUTH_URL="https://deaf-manga-cashiers-shakira.trycloudflare.com"
+BETTER_AUTH_URL="https://damaged-suite-reduction-cdna.trycloudflare.com"
 
 # Google Gemini (For AI Tutor, Vision, and Inngest Tasks)
 GEMINI_API_KEY="your_gemini_api_key"
