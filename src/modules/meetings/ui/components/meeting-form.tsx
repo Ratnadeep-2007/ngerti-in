@@ -107,11 +107,14 @@ export const MeetingForm = ({
   );
 
   const form = useForm<z.infer<typeof meetingsInsertSchema>>({
-    resolver: zodResolver(meetingsInsertSchema),
+    resolver: zodResolver(meetingsInsertSchema) as any,
     defaultValues: {
       name: initialValues?.name || "",
       agentId: initialValues?.agentId || "",
       isPublic: initialValues?.isPublic || false,
+      currentPrompt: initialValues?.currentPrompt || undefined,
+      status: initialValues?.status || undefined,
+      endedAt: initialValues?.endedAt || undefined,
     },
   });
 
@@ -227,7 +230,7 @@ export const MeetingForm = ({
                 Cancel
               </Button>
             )}
-            <Button disabled={isPending} type="submit">
+            <Button isLoading={isPending} type="submit">
               {isEdit ? "Update" : "Create"}
             </Button>
           </div>

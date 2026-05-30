@@ -68,7 +68,11 @@ export const CallConnect = ({
     setCall(_call);
 
     return () => {
-      _call.leave();
+      try {
+        _call.leave();
+      } catch (err) {
+        // Ignore "Cannot leave call that has already been left" error
+      }
       setCall(undefined);
     };
   }, [client, meetingId]);

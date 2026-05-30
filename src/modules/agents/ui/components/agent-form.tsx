@@ -276,7 +276,7 @@ export const AgentForm = ({
                 Cancel
               </Button>
             )}
-            <Button disabled={isPending} type="submit">
+            <Button isLoading={isPending} type="submit">
               {isEdit ? "Update" : "Create"}
             </Button>
           </div>

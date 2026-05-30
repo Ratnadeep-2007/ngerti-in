@@ -111,15 +111,8 @@ export async function POST(req: NextRequest) {
     }
 
 
-  // ✅ Send polling event only once
-  await inngest.send({
-    name: "agent/prompt.poll",
-    data: {
-      agentId: existingAgent.id,
-      meetingId: existingMeeting.id,
-    },
-  });
-  console.log("🚀 Started agent prompt polling");
+    // Agent polling is now disabled as we use Deepgram client-side agent
+    console.log("✅ Meeting started successfully");
     // const call = streamVideo.video.call("default", meetingId);
     // const realtimeClient = await streamVideo.video.connectOpenAi({
     //   call,
@@ -170,8 +163,10 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
-    const call = streamVideo.video.call("default", meetingId);
-    await call.end();
+    
+    // We intentionally DO NOT call `await call.end()` here anymore.
+    // If the AI agent fails to connect or leaves, the call should remain active for the user!
+    console.log(`👤 Participant left meeting ${meetingId}. Call remains active.`);
   } else if (eventType === "call.session_ended") {
     const event = payload as CallEndedEvent;
     const meetingId = event.call.custom?.meetingId;

@@ -201,7 +201,7 @@ const SignUpView = () => {
                 <Button
                   type="submit"
                   className="cursor-pointer w-full"
-                  disabled={pending}
+                  isLoading={pending}
                 >
                   Sign up
                 </Button>
@@ -216,7 +216,7 @@ const SignUpView = () => {
                 <div className="mt-1">
                   <Button
                     type="button"
-                    disabled={pending}
+                    isLoading={pending}
                     variant="secondary"
                     className="w-full cursor-pointer"
                     onClick={() => {

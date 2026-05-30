@@ -85,13 +85,15 @@ export const columns: ColumnDef<MeetingGetMany[number]>[] = [
             "capitalize [&>svg]:size-4 text-muted-foreground",
             statusColorMap[row.original.status as keyof typeof statusColorMap],
           )}
+          suppressHydrationWarning
         >
           <Icon
             className={cn(
-              row.original.status === "processing" && "animate-spin",
+              (row.original.status === "processing" || row.original.status === "active") && "animate-spin",
             )}
+            suppressHydrationWarning
           />
-          {row.original.status}
+          <span suppressHydrationWarning>{row.original.status}</span>
         </Badge>
       );
     },

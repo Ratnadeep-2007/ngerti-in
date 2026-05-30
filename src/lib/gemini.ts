@@ -11,5 +11,10 @@ export const getGeminiModel = (
   if (!apiKey) {
     throw new Error("Missing GEMINI_API_KEY environment variable");
   }
-  return genAI.getGenerativeModel({ model: modelName, generationConfig: config });
+  const { systemInstruction, ...generationConfig } = config || {};
+  return genAI.getGenerativeModel({ 
+    model: modelName, 
+    systemInstruction,
+    generationConfig: Object.keys(generationConfig).length > 0 ? generationConfig : undefined
+  });
 };

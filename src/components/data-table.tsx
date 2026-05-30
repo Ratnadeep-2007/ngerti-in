@@ -8,12 +8,19 @@ import {
 } from "@tanstack/react-table";
 
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
+import React from "react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   onRowClick?: (row: TData) => void;
   type: string;
+  renderContextMenu?: (row: TData) => React.ReactNode;
 }
 
 export function DataTable<TData, TValue>({
@@ -21,6 +28,7 @@ export function DataTable<TData, TValue>({
   data,
   onRowClick,
   type,
+  renderContextMenu,
 }: DataTableProps<TData, TValue>) {
   const table = useReactTable({
     data,
@@ -33,20 +41,32 @@ export function DataTable<TData, TValue>({
       <Table>
         <TableBody>
           {table.getRowModel().rows?.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                onClick={() => onRowClick?.(row.original)}
-                key={row.id}
-                data-state={row.getIsSelected() && "selected"}
-                className="cursor-pointer"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id} className="text-sm p-4">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))
+            table.getRowModel().rows.map((row) => {
+              const rowContent = (
+                <TableRow
+                  onClick={() => onRowClick?.(row.original)}
+                  data-state={row.getIsSelected() && "selected"}
+                  className="cursor-pointer"
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id} className="text-sm p-4">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+
+              if (renderContextMenu) {
+                return (
+                  <ContextMenu key={row.id}>
+                    <ContextMenuTrigger asChild>{rowContent}</ContextMenuTrigger>
+                    {renderContextMenu(row.original)}
+                  </ContextMenu>
+                );
+              }
+
+              return <React.Fragment key={row.id}>{rowContent}</React.Fragment>;
+            })
           ) : (
             <TableRow className="!bg-transparent !hover:bg-transparent !cursor-default">
               <TableCell

@@ -32,6 +32,7 @@ function getUrl() {
 export function TRPCReactProvider(
   props: Readonly<{
     children: React.ReactNode;
+    headers?: Record<string, string>;
   }>,
 ) {
   // NOTE: Avoid useState when initializing the query client if you don't
@@ -45,6 +46,17 @@ export function TRPCReactProvider(
         httpBatchLink({
           // transformer: superjson, <-- if you use a data transformer
           url: getUrl(),
+          headers: () => {
+            if (typeof window !== "undefined") return {};
+            if (props.headers) {
+              const heads = { ...props.headers };
+              delete heads.connection;
+              delete heads.host;
+              heads["x-trpc-source"] = "react";
+              return heads;
+            }
+            return {};
+          },
         }),
       ],
     }),

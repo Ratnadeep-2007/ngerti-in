@@ -18,13 +18,15 @@ import {
   UserPlus,
   Power,
   Trash2,
+  MessageSquareText,
 } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEmotionDetection } from "../../hooks/use-emotion-detection";
 import { useRouter } from "next/navigation";
+import { useDeepgramAgent } from "../../hooks/use-deepgram-agent";
 
 interface CallActiveProps {
   meetingName: string;
@@ -55,8 +57,14 @@ export const CallActive = ({
   const { mutateAsync: removeMeeting } = useMutation(
     trpc.meetings.remove.mutationOptions(),
   );
-
   const isOwner = userId === creatorId;
+
+  const [showCaptions, setShowCaptions] = useState(false);
+  const { captions, isAgentThinking } = useDeepgramAgent({
+    meetingId,
+    agentId: agentId || "",
+    enabled: !!agentId,
+  });
 
   const { useMicrophoneState, useCameraState } = useCallStateHooks();
   const { microphone, isMute: isMicMute } = useMicrophoneState();
@@ -212,113 +220,170 @@ export const CallActive = ({
       {/* Video Layout */}
       <SpeakerLayout />
 
+      {/* Captions Overlay */}
+      {showCaptions && (
+        <div className="absolute bottom-32 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-black/60 backdrop-blur-md rounded-2xl p-4 flex flex-col gap-2 max-h-48 overflow-y-auto pointer-events-auto border border-white/10 z-10">
+          {captions.map((cap) => (
+            <div
+              key={cap.id}
+              className={`flex flex-col ${cap.speaker === "You" ? "items-end" : "items-start"}`}
+            >
+              <span className="text-[10px] text-white/50 mb-1">{cap.speaker}</span>
+              <span
+                className={`text-sm px-3 py-2 rounded-xl ${
+                  cap.speaker === "You"
+                    ? "bg-blue-500/20 text-blue-100"
+                    : "bg-purple-500/20 text-purple-100"
+                }`}
+              >
+                {cap.text}
+              </span>
+            </div>
+          ))}
+          {isAgentThinking && (
+            <div className="flex flex-col items-start mt-2 animate-pulse">
+              <span className="text-[10px] text-white/50 mb-1">AI</span>
+              <span className="text-sm px-3 py-2 rounded-xl bg-purple-500/10 text-purple-200/50 italic">
+                Thinking...
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Custom Call Controls */}
-      <div className="bg-[#101213] rounded-full px-6 py-4 flex items-center justify-center gap-4">
+      <div className="bg-[#101213]/90 backdrop-blur-sm border border-white/10 rounded-2xl px-6 py-4 flex items-center justify-center gap-6 shadow-2xl">
         {/* Microphone Toggle */}
         <button
           onClick={handleMicToggle}
-          className={`p-3 rounded-full transition-all duration-200 ${
-            isMicMute
-              ? "bg-red-500 hover:bg-red-600 text-white"
-              : "bg-white/10 hover:bg-white/20 text-white"
-          }`}
+          className="flex flex-col items-center gap-2 group"
           title={isMicMute ? "Unmute" : "Mute"}
         >
-          {isMicMute ? (
-            <MicOff className="w-5 h-5" />
-          ) : (
-            <Mic className="w-5 h-5" />
-          )}
+          <div className={`p-4 rounded-xl transition-all duration-200 ${
+            isMicMute
+              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30"
+              : "bg-white/10 text-white hover:bg-white/20 border border-white/5"
+          }`}>
+            {isMicMute ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </div>
+          <span className="text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+            {isMicMute ? "Unmute" : "Mute"}
+          </span>
         </button>
 
         {/* Camera Toggle */}
         <button
           onClick={handleCameraToggle}
-          className={`p-3 rounded-full transition-all duration-200 ${
-            isCameraMute
-              ? "bg-red-500 hover:bg-red-600 text-white"
-              : "bg-white/10 hover:bg-white/20 text-white"
-          }`}
+          className="flex flex-col items-center gap-2 group"
           title={isCameraMute ? "Turn Camera On" : "Turn Camera Off"}
         >
-          {isCameraMute ? (
-            <VideoOff className="w-5 h-5" />
-          ) : (
-            <Video className="w-5 h-5" />
-          )}
+          <div className={`p-4 rounded-xl transition-all duration-200 ${
+            isCameraMute
+              ? "bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30"
+              : "bg-white/10 text-white hover:bg-white/20 border border-white/5"
+          }`}>
+            {isCameraMute ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+          </div>
+          <span className="text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+            {isCameraMute ? "Start Video" : "Stop Video"}
+          </span>
         </button>
-
-        {/* Screen Share Toggle */}
-        {/* <button
-          onClick={handleScreenShareToggle}
-          className={`p-3 rounded-full transition-all duration-200 ${
-            isScreenShareOn 
-              ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-              : 'bg-white/10 hover:bg-white/20 text-white'
-          }`}
-          title={isScreenShareOn ? "Stop sharing" : "Share screen"}
-        >
-          {isScreenShareOn ? <MonitorOff className="w-5 h-5" /> : <Monitor className="w-5 h-5" />}
-        </button> */}
 
         {/* Whiteboard Toggle */}
         <button
           onClick={onWhiteboardToggle}
-          className={`p-3 rounded-full transition-all duration-200 ${
-            isWhiteboardOpen
-              ? "bg-purple-500 hover:bg-purple-600 text-white"
-              : "bg-white/10 hover:bg-white/20 text-white"
-          }`}
+          className="flex flex-col items-center gap-2 group"
           title={isWhiteboardOpen ? "Close whiteboard" : "Open whiteboard"}
         >
-          <Palette className="w-5 h-5" />
+          <div className={`p-4 rounded-xl transition-all duration-200 ${
+            isWhiteboardOpen
+              ? "bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30"
+              : "bg-white/10 text-white hover:bg-white/20 border border-white/5"
+          }`}>
+            <Palette className="w-5 h-5" />
+          </div>
+          <span className="text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+            Whiteboard
+          </span>
         </button>
+
+        {/* Captions Toggle */}
+        <button
+          onClick={() => setShowCaptions((prev) => !prev)}
+          className="flex flex-col items-center gap-2 group"
+          title={showCaptions ? "Hide Captions" : "Show Captions"}
+        >
+          <div className={`p-4 rounded-xl transition-all duration-200 ${
+            showCaptions
+              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30"
+              : "bg-white/10 text-white hover:bg-white/20 border border-white/5"
+          }`}>
+            <MessageSquareText className="w-5 h-5" />
+          </div>
+          <span className="text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+            Captions
+          </span>
+        </button>
+
+        <div className="w-[1px] h-12 bg-white/10 mx-2" />
 
         {/* I'm Confused Button */}
         <button
           onClick={() => handleConfused("manual")}
-          className="p-3 rounded-full bg-orange-500 hover:bg-orange-600 text-white transition-all duration-200"
-          title="I'm Confused"
+          className="flex flex-col items-center gap-2 group"
+          title="I need help"
         >
-          <Frown className="w-5 h-5" />
+          <div className="p-4 rounded-xl bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 border border-orange-500/30 transition-all duration-200">
+            <Frown className="w-5 h-5" />
+          </div>
+          <span className="text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+            Confused?
+          </span>
         </button>
 
         {/* Invite Button */}
         <button
           onClick={handleInvite}
-          className="p-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white transition-all duration-200"
+          className="flex flex-col items-center gap-2 group"
           title="Invite Others"
         >
-          <UserPlus className="w-5 h-5" />
+          <div className="p-4 rounded-xl bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30 transition-all duration-200">
+            <UserPlus className="w-5 h-5" />
+          </div>
+          <span className="text-xs font-medium text-white/70 group-hover:text-white transition-colors">
+            Invite
+          </span>
         </button>
 
-        {/* Leave Call */}
-        <button
-          onClick={handleLeave}
-          className="p-3 rounded-full bg-yellow-600 hover:bg-yellow-700 text-white transition-all duration-200"
-          title="Leave call"
-        >
-          <PhoneOff className="w-5 h-5" />
-        </button>
+        <div className="w-[1px] h-12 bg-white/10 mx-2" />
 
-        {/* End Meeting (Owner only) */}
-        {isOwner && (
-          <>
-            <button
-              onClick={handleEndMeeting}
-              className="p-3 rounded-full bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
-              title="End meeting for everyone"
-            >
+        {/* End / Leave Call */}
+        {isOwner ? (
+          <button
+            onClick={handleEndMeeting}
+            className="flex flex-col items-center gap-2 group"
+            title="End meeting for everyone"
+          >
+            <div className="p-4 rounded-xl bg-red-500 text-white hover:bg-red-600 shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all duration-200">
               <Power className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleRemove}
-              className="p-3 rounded-full bg-gray-800 hover:bg-black text-white transition-all duration-200"
-              title="Delete meeting permanently"
-            >
-              <Trash2 className="w-5 h-5" />
-            </button>
-          </>
+            </div>
+            <span className="text-xs font-medium text-red-400 group-hover:text-red-300 transition-colors">
+              End Call
+            </span>
+          </button>
+        ) : (
+          <button
+            onClick={handleLeave}
+            className="flex flex-col items-center gap-2 group"
+            title="Leave call"
+          >
+            <div className="p-4 rounded-xl bg-red-500 text-white hover:bg-red-600 shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all duration-200">
+              <PhoneOff className="w-5 h-5" />
+            </div>
+            <span className="text-xs font-medium text-red-400 group-hover:text-red-300 transition-colors">
+              Leave
+            </span>
+          </button>
         )}
       </div>
     </div>

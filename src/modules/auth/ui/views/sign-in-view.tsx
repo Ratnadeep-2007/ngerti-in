@@ -144,7 +144,7 @@ const SignInView = () => {
                     <AlertTitle>{error}</AlertTitle>
                   </Alert>
                 )}
-                <Button type="submit" className="w-full" disabled={pending}>
+                <Button type="submit" className="w-full" isLoading={pending}>
                   Sign in
                 </Button>
 
@@ -158,7 +158,7 @@ const SignInView = () => {
                 <div className="mt-1 gap-4">
                   <Button
                     type="button"
-                    disabled={pending}
+                    isLoading={pending}
                     variant="secondary"
                     className="w-full cursor-pointer"
                     onClick={() => {

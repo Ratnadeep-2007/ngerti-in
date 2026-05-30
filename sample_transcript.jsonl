@@ -1,4 +1,0 @@
-{"speaker_id": "ngCHwRBEeDxurQc6ysa9cou5inUKhwIj", "text": "Hello, I want to learn about React hooks."}
-{"speaker_id": "zLTXycxiB_8tKJGrwFhi-", "text": "Sure! React hooks allow you to use state and other React features without writing a class. The most common ones are useState and useEffect."}
-{"speaker_id": "ngCHwRBEeDxurQc6ysa9cou5inUKhwIj", "text": "Can you explain useEffect?"}
-{"speaker_id": "zLTXycxiB_8tKJGrwFhi-", "text": "The useEffect hook lets you perform side effects in functional components. It's similar to componentDidMount and componentDidUpdate in classes."}

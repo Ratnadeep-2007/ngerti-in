@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { auth, getSessionCore } from "@/lib/auth";
 import React from "react";
 import { redirect } from "next/navigation";
 import QuickAccess from "@/modules/main-dashboard/views/quick-access";
@@ -12,9 +12,7 @@ import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { LoaderCircle } from "lucide-react";
 const page = async () => {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSessionCore(await headers());
 
   if (!session) {
     redirect("/sign-in");

@@ -5,7 +5,7 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { auth, getSessionCore } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import {
   MeetingIdView,
@@ -21,16 +21,14 @@ interface Props {
 
 const page = async ({ params }: Props) => {
   const { meetingId } = await params;
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSessionCore(await headers());
 
   if (!session) {
     redirect("/sign-in");
   }
 
   const queryClient = getQueryClient();
-  void queryClient.prefetchQuery(
+  await queryClient.prefetchQuery(
     trpc.meetings.getOne.queryOptions({ id: meetingId }),
   );
 

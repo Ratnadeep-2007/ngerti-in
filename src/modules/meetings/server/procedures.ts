@@ -4,6 +4,7 @@ import {
   protectedProcedure,
 } from "@/trpc/init";
 import { db } from "@/db";
+import { inngest } from "@/inngest/client";
 import { meetings, agents } from "@/db/schema";
 // import
 //   import { agentsInsertSchema } from "../schemas";
@@ -66,6 +67,19 @@ export const meetingsRouter = createTRPCRouter({
     });
     return token;
   }),
+
+  generateAgentToken: protectedProcedure
+    .input(z.object({ agentId: z.string() }))
+    .mutation(async ({ input }) => {
+      const expirationTime = Math.floor(Date.now() / 1000) + 3600;
+      const issuedAt = Math.floor(Date.now() / 1000) - 60;
+      const token = streamVideo.generateUserToken({
+        user_id: input.agentId,
+        validity_in_seconds: issuedAt,
+        exp: expirationTime,
+      });
+      return token;
+    }),
 
   remove: protectedProcedure
     .input(z.object({ id: z.string() }))
@@ -142,40 +156,23 @@ export const meetingsRouter = createTRPCRouter({
   create: protectedProcedure
     .input(meetingsInsertSchema)
     .mutation(async ({ input, ctx }) => {
-      const [createdMeeting] = await db
-        .insert(meetings)
-        .values({
-          ...input,
-          userId: ctx.userId.user.id,
-        })
-        .returning();
-
-      const call = streamVideo.video.call("default", createdMeeting.id);
-      await call.create({
-        data: {
-          created_by_id: ctx.userId.user.id,
-          custom: {
-            meetingId: createdMeeting.id,
-            meetingName: createdMeeting.name,
-          },
-          settings_override: {
-            transcription: {
-              language: "en",
-              mode: "auto-on",
-              closed_caption_mode: "auto-on",
-            },
-            recording: {
-              mode: "auto-on",
-              quality: "1080p",
-            },
-          },
-        },
-      });
-
-      const [existingAgent] = await db
-        .select()
-        .from(agents)
-        .where(eq(agents.id, createdMeeting.agentId));
+      // 1. Parallelize Database Calls
+      const [
+        [createdMeeting],
+        [existingAgent]
+      ] = await Promise.all([
+        db
+          .insert(meetings)
+          .values({
+            ...input,
+            userId: ctx.userId.user.id,
+          })
+          .returning(),
+        db
+          .select()
+          .from(agents)
+          .where(eq(agents.id, input.agentId))
+      ]);
 
       if (!existingAgent) {
         throw new TRPCError({
@@ -184,20 +181,47 @@ export const meetingsRouter = createTRPCRouter({
         });
       }
 
-      await streamVideo.upsertUsers([
-        {
-          id: existingAgent.id,
-          name: existingAgent.name,
-          role: "user",
-          image: generatedAvatarUri({
-            seed: existingAgent.name,
-            variant: "botttsNeutral",
-          }),
-        },
+      // 2. Parallelize Stream API Calls
+      const call = streamVideo.video.call("default", createdMeeting.id);
+      
+      await Promise.all([
+        call.create({
+          data: {
+            created_by_id: ctx.userId.user.id,
+            custom: {
+              meetingId: createdMeeting.id,
+              meetingName: createdMeeting.name,
+            },
+            settings_override: {
+              transcription: {
+                language: "en",
+                mode: "auto-on",
+                closed_caption_mode: "auto-on",
+              },
+              recording: {
+                mode: "auto-on",
+                quality: "1080p",
+              },
+            },
+          },
+        }),
+        streamVideo.upsertUsers([
+          {
+            id: existingAgent.id,
+            name: existingAgent.name,
+            role: "user",
+            image: generatedAvatarUri({
+              seed: existingAgent.name,
+              variant: "botttsNeutral",
+            }),
+          },
+        ])
       ]);
 
       return createdMeeting;
     }),
+
+
 
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))

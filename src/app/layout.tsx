@@ -16,16 +16,22 @@ export const metadata: Metadata = {
   description: "AI powered learning platform",
 };
 
-export default function RootLayout({
+import { headers } from "next/headers";
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const h = await headers();
+  const headerMap = new Headers(h);
+  const headerObj = Object.fromEntries(headerMap.entries());
+
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased">
+      <body className="antialiased" suppressHydrationWarning>
         <NuqsAdapter>
-          <TRPCReactProvider>
+          <TRPCReactProvider headers={headerObj}>
             <Toaster />
             {children}
           </TRPCReactProvider>

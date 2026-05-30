@@ -11,7 +11,7 @@ import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { MeetingsListHeader } from "@/modules/meetings/ui/components/meetings-list-header";
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { auth, getSessionCore } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SearchParams } from "nuqs";
 import { loadSearchParams } from "@/modules/agents/params";
@@ -28,9 +28,7 @@ interface Props {
 const page = async ({ searchParams }: Props) => {
   const filters = await loadSearchParams(searchParams);
 
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSessionCore(await headers());
 
   if (!session) {
     redirect("/sign-in");

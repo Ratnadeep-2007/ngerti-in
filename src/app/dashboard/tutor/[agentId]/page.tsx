@@ -4,7 +4,7 @@ import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { headers } from "next/headers";
-import { auth } from "@/lib/auth";
+import { auth, getSessionCore } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import {
   AgentIdView,
@@ -19,9 +19,7 @@ interface Props {
 }
 
 const page = async ({ params }: Props) => {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getSessionCore(await headers());
 
   if (!session) {
     redirect("/sign-in");
@@ -30,7 +28,7 @@ const page = async ({ params }: Props) => {
   const { agentId } = await params;
 
   const queryClient = getQueryClient();
-  void queryClient.prefetchQuery(
+  await queryClient.prefetchQuery(
     trpc.agents.getOne.queryOptions({ id: agentId }),
   );
 
