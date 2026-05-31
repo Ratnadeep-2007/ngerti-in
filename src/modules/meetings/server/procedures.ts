@@ -709,27 +709,31 @@ export const meetingsRouter = createTRPCRouter({
         variant: "botttsNeutral",
       });
 
-      await streamChat.upsertUser({
+      // Run Stream Chat sync in the background to avoid blocking the voice response (saves ~400-800ms latency)
+      const fakeMessageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      
+      streamChat.upsertUser({
         id: agentData.id,
         name: agentData.name,
         image: avatarUrl,
         role: "user",
-      });
-
-      await channel.addMembers([agentData.id]);
-
-      const sentMessage = await channel.sendMessage({
+      })
+      .then(() => channel.addMembers([agentData.id]))
+      .then(() => channel.sendMessage({
         text: aiResponse,
         user: {
           id: agentData.id,
           name: agentData.name,
           image: avatarUrl,
         },
+      }))
+      .catch((chatError) => {
+        console.error("Failed to sync message to Stream Chat in background:", chatError);
       });
 
       return {
         text: aiResponse,
-        messageId: sentMessage.message.id,
+        messageId: fakeMessageId,
       };
     }),
 

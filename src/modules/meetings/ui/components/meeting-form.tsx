@@ -51,8 +51,8 @@ export const MeetingForm = ({
 
   const createMeeting = useMutation(
     trpc.meetings.create.mutationOptions({
-      onSuccess: async (data) => {
-        await queryClient.invalidateQueries(
+      onSuccess: (data) => {
+        queryClient.invalidateQueries(
           trpc.meetings.getMany.queryOptions({}),
         );
 
@@ -77,13 +77,13 @@ export const MeetingForm = ({
 
   const updateMeeting = useMutation(
     trpc.meetings.update.mutationOptions({
-      onSuccess: async () => {
-        await queryClient.invalidateQueries(
+      onSuccess: () => {
+        queryClient.invalidateQueries(
           trpc.meetings.getMany.queryOptions({}),
         );
 
         if (initialValues?.id) {
-          await queryClient.invalidateQueries(
+          queryClient.invalidateQueries(
             trpc.meetings.getOne.queryOptions({ id: initialValues.id }),
           );
         }

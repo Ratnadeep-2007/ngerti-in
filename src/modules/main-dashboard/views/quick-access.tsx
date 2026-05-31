@@ -9,17 +9,27 @@ import {
 import QuickAccessCard from "../ui/quick-access-card";
 import { FileText, Pencil, Video, Sparkles } from "lucide-react";
 import { NewMeetingDialog } from "@/modules/meetings/ui/components/new-meeting-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTRPC } from "@/trpc/client";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 export default function QuickAccess() {
+  const router = useRouter();
   const [isDialogeOpen, setisDialogeOpen] = useState(false);
   const trpc = useTRPC();
   const { data: latestMeeting } = useSuspenseQuery(
     trpc.meetings.getLatestMeeting.queryOptions(),
   );
+
+  useEffect(() => {
+    router.prefetch("/dashboard/meetings");
+    router.prefetch("/dashboard/tutor");
+    if (latestMeeting?.id) {
+      router.prefetch(`/dashboard/meetings/${latestMeeting.id}`);
+    }
+  }, [router, latestMeeting]);
 
   const quickAccessItems = [
     {
@@ -40,7 +50,7 @@ export default function QuickAccess() {
         }
         if (latestMeeting.summary) {
           // Navigate to meeting page instead of opening summary directly
-          window.location.href = `/dashboard/meetings/${latestMeeting.id}`;
+          router.push(`/dashboard/meetings/${latestMeeting.id}`);
         } else {
           toast.error("No summary available for the latest meeting.");
         }

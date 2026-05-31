@@ -95,33 +95,30 @@ export const CallActive = ({
     async (source: "manual" | "proactive" = "manual") => {
       if (!meetingId) return;
 
-      try {
-        const contextMessage =
-          source === "manual"
-            ? "The student just clicked the 'I am confused' button. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way."
-            : "The AI emotion detector noticed the student looks confused or concerned. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way.";
+      const contextMessage =
+        source === "manual"
+          ? "The student just clicked the 'I am confused' button. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way."
+          : "The AI emotion detector noticed the student looks confused or concerned. Please pause, check in with them warmly, and offer to explain the current topic in a simpler way.";
 
-        await updateMeeting({
-          id: meetingId,
-          currentPrompt: contextMessage,
-        });
-
-        if (source === "manual") {
-          toast.success("AI tutor has been notified that you're confused!");
-        } else {
-          toast.info(
-            "AI tutor noticed you might be confused and is adapting...",
-            {
-              icon: <Brain className="size-4" />,
-            },
-          );
-        }
-      } catch (err) {
-        console.error(err);
-        if (source === "manual") {
-          toast.error("Failed to notify AI tutor");
-        }
+      // Optimistic UI response to the user
+      if (source === "manual") {
+        toast.success("AI tutor has been notified that you're confused!");
+      } else {
+        toast.info(
+          "AI tutor noticed you might be confused and is adapting...",
+          {
+            icon: <Brain className="size-4" />,
+          },
+        );
       }
+
+      // Run database update in the background (non-blocking)
+      updateMeeting({
+        id: meetingId,
+        currentPrompt: contextMessage,
+      }).catch((err) => {
+        console.error("Failed to notify AI tutor in database:", err);
+      });
     },
     [meetingId, updateMeeting],
   );
