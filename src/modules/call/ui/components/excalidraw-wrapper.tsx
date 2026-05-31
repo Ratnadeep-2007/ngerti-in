@@ -9,6 +9,7 @@ import { Camera, Upload, Scan, Loader2 } from "lucide-react";
 import Tesseract from "tesseract.js";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCall } from "@stream-io/video-react-sdk";
 
 interface ExcalidrawWrapperProps {
   initialData?: {
@@ -34,6 +35,7 @@ const ExcalidrawWrapper = ({
 
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const call = useCall();
   const { mutateAsync: updateAgent } = useMutation(
     trpc.agents.update.mutationOptions(),
   );
@@ -61,6 +63,35 @@ const ExcalidrawWrapper = ({
     },
     [onChange],
   );
+
+  const lastSyncTextRef = useRef("");
+
+  useEffect(() => {
+    const currentText = (initialData?.elements || [])
+      .filter((el: any) => el.type === "text" && el.text && el.text.trim())
+      .map((el: any) => el.text)
+      .join("\n");
+
+    if (!currentText || currentText === lastSyncTextRef.current) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        lastSyncTextRef.current = currentText;
+        await fetch("/api/ai-whiteboard", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            elements: initialData?.elements || [],
+            meetingId,
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to sync whiteboard text context:", err);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [initialData?.elements, meetingId]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,9 +122,11 @@ const ExcalidrawWrapper = ({
 
       // 2. Add text to Excalidraw
       const api = excalidrawRef.current;
+      let textElement: any = null;
+      let elements: any[] = [];
       if (api) {
-        const elements = api.getSceneElements();
-        const textElement = {
+        elements = api.getSceneElements();
+        textElement = {
           type: "text",
           x: 100,
           y: 100,
@@ -137,8 +170,31 @@ const ExcalidrawWrapper = ({
         currentPrompt: newPrompt,
       });
 
-      setAiResponse("Problem scanned! The AI tutor is now analyzing it...");
-      setTimeout(() => setAiResponse(null), 5000);
+      setAiResponse("Problem scanned! Generating explanation...");
+
+      // Call whiteboard API to trigger tutor voice explanation
+      const res = await fetch("/api/ai-whiteboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          elements: textElement ? [...elements, textElement] : elements,
+          meetingId,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.response && call) {
+          setAiResponse(data.response);
+          call.sendCustomEvent({
+            type: "ai-voice",
+            payload: {
+              text: data.response,
+              senderPlayedLocally: false,
+            },
+          });
+        }
+      }
     } catch (error) {
       console.error("OCR Error:", error);
       setAiResponse("Failed to read image. Please try again.");
@@ -181,9 +237,22 @@ const ExcalidrawWrapper = ({
         }),
       });
 
-      // const data = await res.json();
+      if (!res.ok) throw new Error("Failed to analyze whiteboard");
+
+      const data = await res.json();
+      if (data.response && call) {
+        setAiResponse(data.response);
+        call.sendCustomEvent({
+          type: "ai-voice",
+          payload: {
+            text: data.response,
+            senderPlayedLocally: false, // Let the custom event handler play it locally and for everyone
+          },
+        });
+      }
     } catch (error) {
       console.error("Error asking AI:", error);
+      setAiResponse("AI failed to analyze the whiteboard.");
     } finally {
       setAiLoading(false);
     }
