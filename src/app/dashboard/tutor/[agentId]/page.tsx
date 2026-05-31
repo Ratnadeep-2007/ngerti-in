@@ -28,9 +28,10 @@ const page = async ({ params }: Props) => {
   const { agentId } = await params;
 
   const queryClient = getQueryClient();
-  await queryClient.prefetchQuery(
+  // Prefetch asynchronously to enable instant loading fallback streaming
+  queryClient.prefetchQuery(
     trpc.agents.getOne.queryOptions({ id: agentId }),
-  );
+  ).catch((err) => console.error("Server-side prefetch error:", err));
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>

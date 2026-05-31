@@ -19,14 +19,15 @@ const page = async () => {
   }
 
   const queryClient = getQueryClient();
-  await Promise.all([
+  // Prefetch queries asynchronously to allow Next.js server components to stream HTML immediately (0ms blocking render)
+  Promise.all([
     queryClient.prefetchQuery(trpc.meetings.getLatestMeeting.queryOptions()),
     queryClient.prefetchQuery(trpc.meetings.getHours.queryOptions()),
     queryClient.prefetchQuery(trpc.agents.getMany.queryOptions({})),
     queryClient.prefetchQuery(trpc.meetings.getKnowledgeMap.queryOptions()),
     queryClient.prefetchQuery(trpc.meetings.getDiscoverableMeetings.queryOptions()),
     queryClient.prefetchQuery(trpc.meetings.getMany.queryOptions({})),
-  ]);
+  ]).catch((err) => console.error("Server-side prefetch error:", err));
   return (
     <div className="p-8 flex-col flex gap-8">
       <HydrationBoundary state={dehydrate(queryClient)}>

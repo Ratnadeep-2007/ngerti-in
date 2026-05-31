@@ -28,9 +28,10 @@ const page = async ({ params }: Props) => {
   }
 
   const queryClient = getQueryClient();
-  await queryClient.prefetchQuery(
-    trpc.meetings.getOne.queryOptions({ id: meetingId }),
-  );
+  // Prefetch asynchronously to enable instant loading fallback streaming
+  queryClient.prefetchQuery(
+     trpc.meetings.getOne.queryOptions({ id: meetingId }),
+  ).catch((err) => console.error("Server-side prefetch error:", err));
 
   return (
     <>

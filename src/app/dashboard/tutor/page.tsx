@@ -29,9 +29,10 @@ const page = async ({ searchParams }: Props) => {
   }
 
   const queryClient = getQueryClient();
-  await queryClient.prefetchQuery(
+  // Prefetch asynchronously to enable instant loading fallback streaming
+  queryClient.prefetchQuery(
     trpc.agents.getMany.queryOptions({ ...filters }),
-  );
+  ).catch((err) => console.error("Server-side prefetch error:", err));
 
   return (
     <>
