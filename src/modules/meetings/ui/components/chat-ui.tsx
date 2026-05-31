@@ -14,6 +14,7 @@ import {
 } from "stream-chat-react";
 import { useTRPC } from "@/trpc/client";
 import LoadingState from "@/components/loading-state";
+import { MessageSquareText } from "lucide-react";
 import "stream-chat-react/dist/css/v2/index.css";
 
 interface ChatUIProps {
@@ -48,34 +49,52 @@ export const ChatUI = ({
 
   useEffect(() => {
     if (!client) return;
-    const channel = client.channel("messaging", meetingId, {
-      // name: meetingName,
+    const channel = client.channel("livestream", meetingId, {
+      name: meetingName,
       members: [userId],
-    });
-    setChannel(channel);
+    } as any);
+
+    const initChannel = async () => {
+      await channel.watch();
+      setChannel(channel);
+    };
+
+    initChannel();
   }, [client, meetingId, userId, meetingName]);
 
-  if (!client) {
+  if (!client || !channel) {
     return (
-      <LoadingState
-        title="Loading Chat"
-        description="Please wait while we load the chat."
-      />
+      <div className="flex items-center justify-center h-full bg-white/5 backdrop-blur-md">
+        <LoadingState
+          title="Loading Chat"
+          description="Connecting to meeting chat..."
+        />
+      </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg border overflow-hidden">
-      <Chat client={client}>
-        <Channel channel={channel}>
-          <Window>
-            <div className="flex-1 overflow-y-auto max-h-[calc(100vh-23rem)] border-b">
-              <MessageList />
+    <div className="flex flex-col h-full bg-[#101213]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl">
+      <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
+        <h3 className="font-semibold text-white flex items-center gap-2">
+          <MessageSquareText className="size-4 text-blue-400" />
+          Meeting Chat
+        </h3>
+      </div>
+      <div className="flex-1 min-h-0 h-full">
+        <Chat client={client} theme="str-chat__theme-dark">
+          <Channel channel={channel}>
+            <div className="flex flex-col h-full justify-between">
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <MessageList />
+              </div>
+              <div className="p-3 border-t border-white/10 bg-black/20">
+                <MessageInput focus />
+              </div>
             </div>
-            <MessageInput />
-          </Window>
-        </Channel>
-      </Chat>
+          </Channel>
+        </Chat>
+      </div>
     </div>
   );
 };

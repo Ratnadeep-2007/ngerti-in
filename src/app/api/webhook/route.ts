@@ -229,11 +229,11 @@ export async function POST(req: NextRequest) {
     const [existingMeeting] = await db
       .select()
       .from(meetings)
-      .where(and(eq(meetings.id, channelId), eq(meetings.status, "completed")));
+      .where(eq(meetings.id, channelId));
 
     if (!existingMeeting) {
       return NextResponse.json(
-        { error: "Meeting not found or not completed" },
+        { error: "Meeting not found" },
         { status: 404 },
       );
     }
@@ -249,12 +249,28 @@ export async function POST(req: NextRequest) {
         { status: 404 },
       );
     }
-    if (userId !== existingAgent.id) {
-      const instructions = `
+
+    if (userId === existingAgent.id) {
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // Only respond if the message contains "@ai" (case-insensitive)
+    const containsAiTag = text.toLowerCase().includes("@ai");
+    if (!containsAiTag) {
+      return NextResponse.json({ status: "ok" });
+    }
+
+    const cleanText = text.replace(/@ai/gi, "").trim();
+    const messageToAI = cleanText !== "" ? cleanText : "Hello";
+
+    let instructions = "";
+    if (existingMeeting.status === "completed") {
+      const summaryContent = existingMeeting.summary || "No content available from meeting";
+      instructions = `
       You are an AI assistant helping the user revisit a recently completed meeting.
       Below is a summary of the meeting, generated from the transcript:
       
-      ${existingMeeting.summary}
+      ${summaryContent}
       
       The following are your original instructions from the live meeting assistant. Please continue to follow these behavioral guidelines as you assist the user:
       
@@ -263,59 +279,86 @@ export async function POST(req: NextRequest) {
       The user may ask questions about the meeting, request clarifications, or ask for follow-up actions.
       Always base your responses on the meeting summary above.
       
+      If the summary is empty ("No content available from meeting") or if you cannot find the relevant content/information from the meeting to answer the user's question, you must reply with exactly: "No content available from meeting".
+      
       You also have access to the recent conversation history between you and the user. Use the context of previous messages to provide relevant, coherent, and helpful responses. If the user's question refers to something discussed earlier, make sure to take that into account and maintain continuity in the conversation.
       
-      If the summary does not contain enough information to answer a question, politely let the user know.
-      
       Be concise, helpful, and focus on providing accurate information from the meeting and the ongoing conversation.
-      `;
+      `.trim();
+    } else {
+      instructions = `
+      You are an AI assistant helping the user in a live meeting/learning session.
+      Below are your core behavioral guidelines and context for the session:
+      
+      ${existingAgent.prompt}
+      
+      Current session context (which may include whiteboard content, OCR of textbooks, etc.):
+      ${existingMeeting.currentPrompt || "No additional live context available."}
+      
+      The user is in a live session and can talk to you or chat with you. Keep your response concise, helpful, and direct.
+      `.trim();
+    }
 
-      const channel = streamChat.channel("messaging", channelId);
-      await channel.watch();
-      const history = channel.state.messages
-        .slice(-5)
-        .filter((msg) => msg.text && msg.text.trim() !== "")
-        .map((message) => ({
-          role: message.user?.id === existingAgent.id ? "model" : "user",
-          parts: [{ text: message.text || "" }],
-        }));
+    const channelType = event.channel_type || "livestream";
+    const channel = streamChat.channel(channelType, channelId);
+    await channel.watch();
 
-      const model = getGeminiModel("models/gemini-3.5-flash");
-      const chat = model.startChat({
-        history: history,
-        systemInstruction: instructions,
+    const messagesToInclude = (channel.state.messages || [])
+      .filter((msg) => msg.id !== event.message?.id) // exclude current message
+      .slice(-5); // take last 5 messages
+
+    const history = messagesToInclude
+      .filter((msg) => msg.text && msg.text.trim() !== "")
+      .map((message) => {
+        const role = message.user?.id === existingAgent.id ? "model" : "user";
+        let msgText = message.text || "";
+        if (role === "user") {
+          msgText = msgText.replace(/@ai/gi, "").trim();
+        }
+        return {
+          role,
+          parts: [{ text: msgText }],
+        };
       });
 
-      const result = await chat.sendMessage(text);
-      const GPTResponseText = result.response.text();
+    const model = getGeminiModel("models/gemini-3.5-flash", {
+      systemInstruction: instructions,
+    });
+    const chat = model.startChat({
+      history: history,
+    });
 
-      if (!GPTResponseText) {
-        return NextResponse.json(
-          { error: "No response from GPT" },
-          { status: 400 },
-        );
-      }
+    const result = await chat.sendMessage(messageToAI);
+    const GPTResponseText = result.response.text();
 
-      const avatarUrl = generatedAvatarUri({
-        seed: existingAgent.name,
-        variant: "botttsNeutral",
-      });
+    if (!GPTResponseText) {
+      return NextResponse.json(
+        { error: "No response from GPT" },
+        { status: 400 },
+      );
+    }
 
-      streamChat.upsertUser({
+    const avatarUrl = generatedAvatarUri({
+      seed: existingAgent.name,
+      variant: "botttsNeutral",
+    });
+
+    await streamChat.upsertUser({
+      id: existingAgent.id,
+      name: existingAgent.name,
+      image: avatarUrl,
+    });
+
+    await channel.addMembers([existingAgent.id]);
+
+    await channel.sendMessage({
+      text: GPTResponseText,
+      user: {
         id: existingAgent.id,
         name: existingAgent.name,
         image: avatarUrl,
-      });
-
-      channel.sendMessage({
-        text: GPTResponseText,
-        user: {
-          id: existingAgent.id,
-          name: existingAgent.name,
-          image: avatarUrl,
-        },
-      });
-    }
+      },
+    });
   }
   return NextResponse.json({ status: "ok" });
 }
