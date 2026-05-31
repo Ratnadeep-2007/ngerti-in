@@ -35,6 +35,7 @@ import { languages } from "humanize-duration";
 import JSONL from "jsonl-parse-stringify";
 import { user } from "@/db/schema";
 import { streamChat } from "@/lib/stream-chat";
+import { generateNvidiaResponse } from "@/lib/nvidia";
 
 export const meetingsRouter = createTRPCRouter({
   generateChatToken: protectedProcedure.mutation(async ({ ctx }) => {
@@ -221,8 +222,6 @@ export const meetingsRouter = createTRPCRouter({
       return createdMeeting;
     }),
 
-
-
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
@@ -248,6 +247,76 @@ export const meetingsRouter = createTRPCRouter({
 
       if (!existingMeeting) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Meeting not found" });
+      }
+
+      let finalRecordingUrl = existingMeeting.recordingUrl;
+      let finalTranscriptUrl = existingMeeting.transcriptUrl;
+      let finalStatus = existingMeeting.status;
+
+      if (!finalRecordingUrl || !finalTranscriptUrl) {
+        try {
+          const [recordingsRes, transcriptionsRes] = await Promise.all([
+            !finalRecordingUrl
+              ? streamVideo.video.listRecordings({ type: "default", id: input.id })
+              : null,
+            !finalTranscriptUrl
+              ? streamVideo.video.listTranscriptions({ type: "default", id: input.id })
+              : null,
+          ]);
+
+          if (recordingsRes?.recordings && recordingsRes.recordings.length > 0) {
+            finalRecordingUrl = recordingsRes.recordings[0].url;
+          }
+
+          if (transcriptionsRes?.transcriptions && transcriptionsRes.transcriptions.length > 0) {
+            finalTranscriptUrl = transcriptionsRes.transcriptions[0].url;
+          }
+
+          if (finalRecordingUrl || finalTranscriptUrl) {
+            finalStatus = "completed";
+          }
+
+          if (
+            finalRecordingUrl !== existingMeeting.recordingUrl ||
+            finalTranscriptUrl !== existingMeeting.transcriptUrl ||
+            finalStatus !== existingMeeting.status
+          ) {
+            const updateData: any = {};
+            if (finalRecordingUrl) updateData.recordingUrl = finalRecordingUrl;
+            if (finalTranscriptUrl) updateData.transcriptUrl = finalTranscriptUrl;
+            if (finalStatus) updateData.status = finalStatus;
+            
+            // If meeting has ended but endedAt is not set, set it now
+            const endedAtValue = existingMeeting.endedAt || new Date();
+            updateData.endedAt = endedAtValue;
+
+            await db
+              .update(meetings)
+              .set(updateData)
+              .where(eq(meetings.id, input.id));
+
+            // Trigger Inngest processing if we just found the transcript and meeting wasn't processed yet
+            if (finalTranscriptUrl && existingMeeting.status !== "completed") {
+              await inngest.send({
+                name: "meetings/processing",
+                data: {
+                  meeting_id: input.id,
+                  transcript_url: finalTranscriptUrl,
+                },
+              });
+            }
+            
+            return {
+              ...existingMeeting,
+              recordingUrl: finalRecordingUrl,
+              transcriptUrl: finalTranscriptUrl,
+              status: finalStatus as any,
+              endedAt: endedAtValue,
+            };
+          }
+        } catch (e) {
+          console.error("Failed to query recordings/transcriptions from Stream:", e);
+        }
       }
 
       return existingMeeting;
@@ -315,8 +384,6 @@ export const meetingsRouter = createTRPCRouter({
       return { items: data, total: total.count, totalPages };
     }),
 
-  // Add this inside meetingsRouter
-
   getTranscript: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
@@ -337,13 +404,30 @@ export const meetingsRouter = createTRPCRouter({
         });
       }
 
-      if (!existingMeeting.transcriptUrl) {
+      let transcriptUrl = existingMeeting.transcriptUrl;
+
+      if (!transcriptUrl) {
+        try {
+          const res = await streamVideo.video.listTranscriptions({ type: "default", id: input.id });
+          if (res.transcriptions && res.transcriptions.length > 0) {
+            transcriptUrl = res.transcriptions[0].url;
+            await db
+              .update(meetings)
+              .set({ transcriptUrl })
+              .where(eq(meetings.id, input.id));
+          }
+        } catch (e) {
+          console.error("Failed to query transcriptions from Stream in getTranscript:", e);
+        }
+      }
+
+      if (!transcriptUrl) {
         return [];
       }
 
       // If you store the transcript as a URL and want to fetch its content:
 
-      const transcript = await fetch(existingMeeting.transcriptUrl)
+      const transcript = await fetch(transcriptUrl)
         .then((res) => res.text())
         .then((text) => JSONL.parse<StreamTranscriptItem>(text))
         .catch(() => {
@@ -538,4 +622,212 @@ export const meetingsRouter = createTRPCRouter({
 
     return discoverable;
   }),
+
+  talkToAgent: protectedProcedure
+    .input(
+      z.object({
+        meetingId: z.string(),
+        text: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { meetingId, text } = input;
+
+      const [existingMeeting] = await db
+        .select({
+          ...getTableColumns(meetings),
+          agent: agents,
+        })
+        .from(meetings)
+        .innerJoin(agents, eq(meetings.agentId, agents.id))
+        .where(
+          and(
+            eq(meetings.id, meetingId),
+            or(
+              eq(meetings.userId, ctx.userId.user.id),
+              eq(meetings.isPublic, true),
+            ),
+          ),
+        );
+
+      if (!existingMeeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      const agentData = existingMeeting.agent;
+
+      const channel = streamChat.channel("messaging", meetingId, {
+        created_by_id: ctx.userId.user.id,
+      });
+      await channel.create();
+      
+      const messages = await channel.query({ messages: { limit: 10 } });
+      const history = (messages.messages || [])
+        .filter((msg) => msg.text && msg.text.trim() !== "")
+        .map((message) => ({
+          role: message.user?.id === agentData.id ? "model" : "user",
+          parts: [{ text: message.text || "" }],
+        }));
+
+      const systemInstruction = `
+        You are an AI Tutor named ${agentData.name}.
+        Your subject is ${agentData.subject}.
+        Your system instructions/persona are:
+        ${agentData.prompt}
+        
+        Current Meeting Context:
+        ${existingMeeting.currentPrompt || "No additional context."}
+        
+        Currently you are in a live virtual meeting call with one or more students.
+        Explain concepts step-by-step, be helpful, concise, and encourage interactive learning.
+        You are responding to a student's voice/text question. Keep your answers brief and readable, as they will be spoken out loud via text-to-speech.
+      `.trim();
+
+      const formattedMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemInstruction },
+        ...history.map((h) => ({
+          role: h.role === "model" ? ("assistant" as const) : ("user" as const),
+          content: h.parts[0].text,
+        })),
+        { role: "user" as const, content: text },
+      ];
+
+      const aiResponse = await generateNvidiaResponse(formattedMessages);
+
+      if (!aiResponse) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "No response from NVIDIA NIM",
+        });
+      }
+
+      const avatarUrl = generatedAvatarUri({
+        seed: agentData.name,
+        variant: "botttsNeutral",
+      });
+
+      await streamChat.upsertUser({
+        id: agentData.id,
+        name: agentData.name,
+        image: avatarUrl,
+        role: "user",
+      });
+
+      await channel.addMembers([agentData.id]);
+
+      const sentMessage = await channel.sendMessage({
+        text: aiResponse,
+        user: {
+          id: agentData.id,
+          name: agentData.name,
+          image: avatarUrl,
+        },
+      });
+
+      return {
+        text: aiResponse,
+        messageId: sentMessage.message.id,
+      };
+    }),
+
+  askPostMeetingAI: protectedProcedure
+    .input(
+      z.object({
+        meetingId: z.string(),
+        messages: z.array(
+          z.object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { meetingId, messages } = input;
+
+      const [existingMeeting] = await db
+        .select({
+          ...getTableColumns(meetings),
+          agent: agents,
+        })
+        .from(meetings)
+        .innerJoin(agents, eq(meetings.agentId, agents.id))
+        .where(
+          and(
+            eq(meetings.id, meetingId),
+            or(
+              eq(meetings.userId, ctx.userId.user.id),
+              eq(meetings.isPublic, true),
+            ),
+          ),
+        );
+
+      if (!existingMeeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      const agentData = existingMeeting.agent;
+
+      // Fetch meeting transcript from transcriptUrl if it exists
+      let transcriptText = "";
+      if (existingMeeting.transcriptUrl) {
+        try {
+          const transcriptData = await fetch(existingMeeting.transcriptUrl)
+            .then((res) => res.text())
+            .then((text) => JSONL.parse<StreamTranscriptItem>(text))
+            .catch(() => []);
+
+          if (transcriptData.length > 0) {
+            transcriptText = transcriptData
+              .map((item) => `${item.speaker_id}: ${item.text}`)
+              .join("\n");
+          }
+        } catch (e) {
+          console.error("Failed to parse transcript for post-meeting AI:", e);
+        }
+      }
+
+      const systemInstruction = `
+        You are ${agentData.name}, an AI Tutor specializing in ${agentData.subject}.
+        Your system instructions/persona are:
+        ${agentData.prompt}
+        
+        This meeting has ended. You are now assisting the student post-meeting, answering questions they have about the session, the transcript, or any follow-up questions they have about the subject matter.
+        
+        Here is the info about the meeting:
+        - Meeting Name: ${existingMeeting.name}
+        - Meeting Summary: ${existingMeeting.summary || "No summary available."}
+        - Meeting Transcript:
+        ${transcriptText ? transcriptText : "No transcript available. (Either the call was empty, or transcript is processing)"}
+        
+        Answer the user's questions clearly, accurately, and in accordance with your tutor persona. Use markdown formatting where appropriate.
+      `.trim();
+
+      const formattedMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemInstruction },
+        ...messages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      ];
+
+      const aiResponse = await generateNvidiaResponse(formattedMessages);
+
+      if (!aiResponse) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "No response from NVIDIA NIM",
+        });
+      }
+
+      return {
+        text: aiResponse,
+      };
+    }),
 });

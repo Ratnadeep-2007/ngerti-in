@@ -10,6 +10,7 @@ interface Props {
   meetingId: string;
   meetingName: string;
   agentId: string;
+  agentName: string;
   creatorId: string;
 }
 
@@ -17,6 +18,7 @@ export const CallProvider = ({
   meetingId,
   meetingName,
   agentId,
+  agentName,
   creatorId,
 }: Props) => {
   const { data, isPending } = authClient.useSession();
@@ -71,6 +73,7 @@ export const CallProvider = ({
         meetingId={meetingId}
         meetingName={meetingName}
         agentId={agentId}
+        agentName={agentName}
         userId={data.user.id}
         userName={data.user.name || "Anonymous"}
         userImage={generatedAvatarUri({

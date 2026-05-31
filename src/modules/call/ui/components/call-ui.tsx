@@ -1,5 +1,5 @@
 // src/modules/call/ui/components/call-ui.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   useCall,
   useCallStateHooks,
@@ -28,11 +28,13 @@ const ExcalidrawWrapper = dynamic(
 export const CallUI = ({
   meetingName,
   agentId,
+  agentName,
   creatorId,
   userId,
 }: {
   meetingName: string;
   agentId: string;
+  agentName: string;
   creatorId: string;
   userId: string;
 }) => {
@@ -41,6 +43,7 @@ export const CallUI = ({
   const callingState = useCallCallingState();
   const [show, setShow] = useState<"lobby" | "call" | "ended">("lobby");
   const [isWhiteboardOpen, setWhiteboardOpen] = useState(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // State to persist Excalidraw data
   const [excalidrawData, setExcalidrawData] = useState<{
@@ -56,7 +59,7 @@ export const CallUI = ({
   const handleJoin = async () => {
     if (!call || callingState !== CallingState.IDLE) return;
     try {
-      await call.join();
+      await call.join({ create: true });
       setShow("call");
     } catch (err) {
       console.error(err);
@@ -67,20 +70,33 @@ export const CallUI = ({
     setWhiteboardOpen(!isWhiteboardOpen);
   }, [isWhiteboardOpen]);
 
-  // Function to update Excalidraw data with useCallback to prevent re-renders
+  // Function to update Excalidraw data with useCallback to prevent re-renders (debounced)
   const handleExcalidrawChange = useCallback((elements: any, appState: any) => {
-    setExcalidrawData((prevData) => {
-      const safeElements = Array.isArray(elements) ? elements : [];
-      const hasChanges =
-        JSON.stringify(prevData.elements) !== JSON.stringify(safeElements) ||
-        JSON.stringify(prevData.appState) !== JSON.stringify(appState);
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setExcalidrawData((prevData) => {
+        const safeElements = Array.isArray(elements) ? elements : [];
+        const hasChanges =
+          JSON.stringify(prevData.elements) !== JSON.stringify(safeElements) ||
+          JSON.stringify(prevData.appState) !== JSON.stringify(appState);
 
-      if (!hasChanges) return prevData;
-      return {
-        elements: safeElements,
-        appState: appState || { viewBackgroundColor: "#ffffff" },
-      };
-    });
+        if (!hasChanges) return prevData;
+        return {
+          elements: safeElements,
+          appState: appState || { viewBackgroundColor: "#ffffff" },
+        };
+      });
+    }, 500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -109,6 +125,7 @@ export const CallUI = ({
               onWhiteboardToggle={handleWhiteboardToggle}
               isWhiteboardOpen={isWhiteboardOpen}
               agentId={agentId}
+              agentName={agentName}
               meetingId={call?.id || ""}
               creatorId={creatorId}
               userId={userId}

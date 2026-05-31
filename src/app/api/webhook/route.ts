@@ -301,6 +301,9 @@ export async function POST(req: NextRequest) {
 
     const channelType = event.channel_type || "livestream";
     const channel = streamChat.channel(channelType, channelId);
+    await channel.create({
+      created_by_id: userId,
+    });
     await channel.watch();
 
     const messagesToInclude = (channel.state.messages || [])

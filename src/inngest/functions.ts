@@ -76,25 +76,31 @@ const meetingsProcessing = inngest.createFunction(
     const { transcriptUrl, meeting_id } = event.data;
     if (!transcriptUrl) throw new Error("Missing transcript_url");
 
-    // ✅ Parallel 1: Fetch and parse transcript while simultaneously identifying speakers
-    const [transcript, speakers] = await Promise.all([
-      step.run("fetch-and-parse-transcript", async () => {
-        const res = await fetch(transcriptUrl);
-        const text = await res.text();
-        return JSONL.parse<StreamTranscriptItem>(text);
-      }),
-      step.run("get-relevant-speakers", async () => {
-        // First get the transcript to know who we need (but we can't await it here if we want parallel)
-        // Optimization: We'll fetch all unique speaker IDs from the transcript after fetching it.
-        // To keep it parallel, we'll fetch only the users/agents linked to this specific meeting.
-        const [meetingData] = await db.select().from(meetings).where(eq(meetings.id, meeting_id)).limit(1);
-        const [users, agentsList] = await Promise.all([
-          db.select().from(user).where(eq(user.id, meetingData.userId)),
-          db.select().from(agents).where(eq(agents.id, meetingData.agentId))
-        ]);
-        return { users, agents: agentsList };
-      })
-    ]);
+    // 1. Fetch and parse transcript
+    const transcript = await step.run("fetch-and-parse-transcript", async () => {
+      const res = await fetch(transcriptUrl);
+      const text = await res.text();
+      return JSONL.parse<StreamTranscriptItem>(text);
+    });
+
+    // 2. Identify speakers
+    const speakers = await step.run("get-relevant-speakers", async () => {
+      const [meetingData] = await db
+        .select()
+        .from(meetings)
+        .where(eq(meetings.id, meeting_id))
+        .limit(1);
+
+      if (!meetingData) {
+        throw new Error(`Meeting not found: ${meeting_id}`);
+      }
+
+      const [users, agentsList] = await Promise.all([
+        db.select().from(user).where(eq(user.id, meetingData.userId)),
+        db.select().from(agents).where(eq(agents.id, meetingData.agentId)),
+      ]);
+      return { users, agents: agentsList };
+    });
 
     // ✅ Map speakers to transcript
     const transcriptWithSpeakers = transcript.map((item) => {
@@ -102,19 +108,42 @@ const meetingsProcessing = inngest.createFunction(
       return { ...item, user: { name: speaker ? speaker.name : "Unknown" } };
     });
 
-    // ✅ Parallel 2: Generate Gemini summary and fetch YouTube videos simultaneously
-    const [aiOutput, youtubeVideos] = await Promise.all([
-      step.run("generate-gemini-summary", async () => {
-        const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
-        const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
-        const result = await model.generateContent(prompt);
-        return summarizerOutputSchema.parse(JSON.parse(result.response.text()));
-      }),
-      step.run("fetch-youtube-recommendations", async () => {
-        // We use the meeting name or a quick summary for faster YT search
-        return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
-      })
-    ]);
+    // Check if there is any text content in the transcript
+    const hasContent = transcriptWithSpeakers.some(t => t.text && t.text.trim().length > 0);
+
+    if (!hasContent) {
+      await step.run("save-final-results", async () => {
+        await db.update(meetings)
+          .set({
+            summary: "No content available from meeting",
+            quiz: JSON.stringify([]),
+            learningPath: JSON.stringify([]),
+            suggestedVideos: JSON.stringify([]),
+            topics: JSON.stringify([]),
+            status: "completed",
+          })
+          .where(eq(meetings.id, meeting_id));
+      });
+      return;
+    }
+
+    // 3. Generate Gemini summary
+    const aiOutput = await step.run("generate-gemini-summary", async () => {
+      const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
+      const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
+      const result = await model.generateContent(prompt);
+      const data = JSON.parse(result.response.text());
+      if (!data.summary || data.summary.trim().length === 0) {
+        data.summary = "No content available from meeting";
+      }
+      return summarizerOutputSchema.parse(data);
+    });
+
+    // 4. Fetch YouTube recommendations
+    const youtubeVideos = await step.run("fetch-youtube-recommendations", async () => {
+      // We use the meeting name or a quick summary for faster YT search
+      return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
+    });
 
     // ✅ Final Save
     await step.run("save-final-results", async () => {
@@ -132,4 +161,122 @@ const meetingsProcessing = inngest.createFunction(
   },
 );
 
-export { meetingsProcessing, inngest };
+// Add this at the top of functions.ts or here to track active polling
+const activePolling = new Set<string>();
+const pollAgentPrompt = inngest.createFunction(
+  { id: "poll-agent-prompt", triggers: [{ event: "agent/prompt.poll" }] },
+  async ({ event, step }) => {
+    console.log("🎯 [INNGEST] pollAgentPrompt started with data:", event.data);
+    
+    const { agentId, meetingId } = event.data;
+    const pollingKey = `${meetingId}-${agentId}`;
+
+    // ✅ Prevent multiple polling for same meeting/agent
+    if (activePolling.has(pollingKey)) {
+      console.log("🛑 Polling already active for:", pollingKey);
+      return;
+    }
+
+    activePolling.add(pollingKey);
+
+    try {
+      const [agent] = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, agentId));
+
+      if (!agent) {
+        console.error("❌ Agent not found:", agentId);
+        activePolling.delete(pollingKey);
+        return;
+      }
+
+      // ✅ Create connection and loop inside step.run()
+      await step.run("connect-and-update-loop", async () => {
+        console.log("🛠️ [INNGEST] Upserting agent in Stream:", agent.id);
+        // Ensure agent is upserted in Stream Video
+        await streamVideo.upsertUsers([
+          {
+            id: agent.id,
+            name: agent.name,
+            role: "admin",
+            image: `https://api.dicebear.com/9.x/bottts-neutral/svg?seed=${agent.name}`,
+          },
+        ]);
+
+        console.log("🛠️ [INNGEST] Connecting OpenAI to call:", meetingId);
+        const call = streamVideo.video.call("default", meetingId);
+        
+        try {
+          const realtimeClient = await streamVideo.video.connectOpenAi({
+            call,
+            openAiApiKey: process.env.OPENAI_API_KEY!,
+            agentUserId: agent.id,
+          });
+
+          console.log("✅ [INNGEST] Agent connected to call successfully:", agent.id);
+
+          // ✅ Set up event listener ONCE outside the loop
+          realtimeClient.on("conversation.updated", (instruction: unknown) => {
+            console.log(`📡 [INNGEST] received conversation.updated`, instruction);
+          });
+
+          // ✅ Wait for connection to be ready
+          await new Promise(resolve => setTimeout(resolve, 2000));
+
+          let previousPrompt = "";
+
+          // ✅ Loop inside step.run() - connection dibuat sekali, update berkali-kali
+          while (true) {
+            try {
+              const [latestAgent] = await db
+                .select()
+                .from(agents)
+                .where(eq(agents.id, agentId));
+
+              const [latestMeeting] = await db
+                .select({ currentPrompt: meetings.currentPrompt })
+                .from(meetings)
+                .where(eq(meetings.id, meetingId));
+
+              if (latestAgent) {
+                const combinedPrompt = latestMeeting?.currentPrompt 
+                  ? `${latestAgent.prompt}\n\n${latestMeeting.currentPrompt}`
+                  : latestAgent.prompt;
+
+                // ✅ Only update if prompt has changed
+                if (combinedPrompt !== previousPrompt) {
+                  console.log("🔄 [INNGEST] Prompt changed, updating session...");
+                  
+                  await realtimeClient.updateSession({
+                    instructions: combinedPrompt,
+                  });
+                  
+                  previousPrompt = combinedPrompt;
+                  console.log("✅ [INNGEST] Session updated with new combined instructions");
+                }
+              }
+
+              // Wait 1 second before next check
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+            } catch (updateError) {
+              console.error("❌ [INNGEST] Update error:", updateError);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        } catch (connError) {
+          console.error("❌ [INNGEST] Failed to connect OpenAI to Stream:", connError);
+          throw connError;
+        }
+      });
+
+    } catch (error) {
+      console.error("❌ Error in pollAgentPrompt:", error);
+    } finally {
+      activePolling.delete(pollingKey);
+    }
+  }
+);
+
+export { meetingsProcessing, pollAgentPrompt, inngest };

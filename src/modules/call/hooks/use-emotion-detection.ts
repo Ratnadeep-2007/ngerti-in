@@ -12,7 +12,7 @@ interface EmotionDetectionResult {
 
 export const useEmotionDetection = (
   onConfused: () => void,
-  enabled: boolean = true,
+  enabled: boolean = false,
 ): EmotionDetectionResult => {
   const { useCameraState } = useCallStateHooks();
   const { mediaStream } = useCameraState();
@@ -30,7 +30,7 @@ export const useEmotionDetection = (
 
   // Load models on mount
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || isModelsLoaded) return;
     let isMounted = true;
 
     const loadModels = async () => {
@@ -54,12 +54,12 @@ export const useEmotionDetection = (
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [enabled, isModelsLoaded]);
 
   // Sync media stream to hidden video element
   useEffect(() => {
-    if (videoRef.current && mediaStream) {
-      videoRef.current.srcObject = mediaStream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = mediaStream || null;
     }
   }, [mediaStream]);
 

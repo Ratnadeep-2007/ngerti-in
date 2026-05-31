@@ -129,5 +129,33 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
     console.error("Failed to suggest YT videos:", err);
   }
 
-  return new NextResponse(null, { status: 204 });
+  // 7. Generate explanation of whiteboard contents in Tutor's Persona
+  let aiExplanationText = "";
+  try {
+    const explanationPrompt = `
+      You are the AI Tutor named ${agent.name}. Your subject is ${agent.subject}.
+      Your system instructions/persona are:
+      ${agent.prompt}
+
+      The student has just updated the whiteboard. Here is the latest whiteboard content and context:
+      ${whiteboardSummary}
+      
+      Here is the textbook knowledge base context:
+      ${kbContext}
+
+      Please analyze the whiteboard content, drawings, handwriting, and textbook excerpts. Provide a very brief, concise, and helpful explanation or check-in regarding what is on the board.
+      
+      IMPORTANT: Keep your response short, highly conversational, and suitable for being read aloud via Text-to-Speech (concise sentences, no markdown lists or bullet formatting, maximum 3 sentences).
+    `.trim();
+
+    const explanationModel = genAI.getGenerativeModel({ model: "models/gemini-3.5-flash" });
+    const explanationResult = await explanationModel.generateContent(explanationPrompt);
+    aiExplanationText = explanationResult.response.text();
+  } catch (err) {
+    console.error("Failed to generate whiteboard AI explanation:", err);
+  }
+
+  return NextResponse.json({
+    response: aiExplanationText
+  });
 }

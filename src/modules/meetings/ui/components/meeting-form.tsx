@@ -3,7 +3,7 @@ import { MeetingGetOne } from "../../types";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import z from "zod";
+import { z } from "zod";
 import { meetingsInsertSchema } from "../../schema";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -114,7 +114,7 @@ export const MeetingForm = ({
       isPublic: initialValues?.isPublic || false,
       currentPrompt: initialValues?.currentPrompt || undefined,
       status: initialValues?.status || undefined,
-      endedAt: initialValues?.endedAt || undefined,
+      endedAt: initialValues?.endedAt ? new Date(initialValues.endedAt) : undefined,
     },
   });
 
@@ -138,10 +138,10 @@ export const MeetingForm = ({
         onOpenChange={setOpenNewAgentDialog}
       />
       <Form {...form}>
-        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit as any)}>
           <FormField
             name="name"
-            control={form.control}
+            control={form.control as any}
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Name</FormLabel>
@@ -154,7 +154,7 @@ export const MeetingForm = ({
           />
           <FormField
             name="agentId"
-            control={form.control}
+            control={form.control as any}
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Tutor</FormLabel>
@@ -199,7 +199,7 @@ export const MeetingForm = ({
 
           <FormField
             name="isPublic"
-            control={form.control}
+            control={form.control as any}
             render={({ field }) => (
               <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-xs">
                 <div className="space-y-0.5">

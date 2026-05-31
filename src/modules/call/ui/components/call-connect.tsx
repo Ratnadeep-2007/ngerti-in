@@ -17,6 +17,7 @@ interface Props {
   meetingId: string;
   meetingName: string;
   agentId: string;
+  agentName: string;
   userId: string;
   userName: string;
   userImage: string;
@@ -27,6 +28,7 @@ export const CallConnect = ({
   meetingId,
   meetingName,
   agentId,
+  agentName,
   userId,
   userName,
   userImage,
@@ -41,7 +43,7 @@ export const CallConnect = ({
   const [client, setClient] = useState<StreamVideoClient>();
 
   useEffect(() => {
-    const _client = new StreamVideoClient({
+    const _client = StreamVideoClient.getOrCreateInstance({
       apiKey: process.env.NEXT_PUBLIC_STREAM_VIDEO_API_KEY!,
       user: {
         id: userId,
@@ -53,7 +55,9 @@ export const CallConnect = ({
 
     setClient(_client);
     return () => {
-      _client.disconnectUser();
+      // Note: We don't disconnectUser here because getOrCreateInstance might be shared
+      // and we want to avoid the "Client already exists" warning on re-mounts.
+      // If you really want to disconnect, you can, but it often triggers the re-init warning in Dev mode.
       setClient(undefined);
     };
   }, [userId, userName, userImage, generateToken]);
@@ -128,6 +132,7 @@ export const CallConnect = ({
           <CallUI
             meetingName={meetingName}
             agentId={agentId}
+            agentName={agentName}
             creatorId={creatorId}
             userId={userId}
           />

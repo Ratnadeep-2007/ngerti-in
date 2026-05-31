@@ -7,6 +7,15 @@ const vector = customType<{ data: number[] }>({
   dataType() {
     return "vector(768)";
   },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: unknown): number[] {
+    if (typeof value === "string") {
+      return value.slice(1, -1).split(",").map(Number);
+    }
+    return value as number[];
+  },
 });
 
 export const user = pgTable("user", {

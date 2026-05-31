@@ -9,7 +9,7 @@ export const createTRPCContext = cache(async () => {
    * @see: https://trpc.io/docs/server/context
    */
   const h = await headers();
-  const session = await getSessionCore(await headers());
+  const session = await getSessionCore(h);
 
   if (!session) {
     console.log("❌ [TRPC Context] No session found");

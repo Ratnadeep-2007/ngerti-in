@@ -172,7 +172,7 @@ export const useDeepgramAgent = ({
         call.camera.disable(); // Prevent hardware camera
         // DO NOT disable microphone here, otherwise Stream backend hard-mutes the participant 
         // overriding our custom audio stream.
-        await call.join({ create: false });
+        await call.join({ create: true });
 
         // Set up the virtual microphone for the agent to broadcast TTS
         audioContextRef.current = new window.AudioContext();

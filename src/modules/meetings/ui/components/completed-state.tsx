@@ -22,7 +22,7 @@ import { GeneratedAvatar } from "@/components/generated-avatar";
 import { formatDuration } from "@/lib/utils";
 import { format } from "date-fns";
 import { Transcript } from "./transcript";
-import { ChatProvider } from "./chat-provider";
+import { RecapChatProvider } from "./recap-chat-provider";
 import { Button } from "@/components/ui/button";
 
 interface CompletedStateProps {
@@ -140,7 +140,12 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
             </div>
           </TabsContent>
           <TabsContent value="chat">
-            <ChatProvider meetingId={data.id} meetingName={data.name} />
+            <RecapChatProvider
+              meetingId={data.id}
+              meetingName={data.name}
+              agentName={data.agent?.name}
+              agentId={data.agent?.id}
+            />
           </TabsContent>
           <TabsContent value="transcript">
             <Transcript meetingId={data.id} />
