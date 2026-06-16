@@ -127,23 +127,23 @@ const meetingsProcessing = inngest.createFunction(
       return;
     }
 
-    // 3. Generate Gemini summary
-    const aiOutput = await step.run("generate-gemini-summary", async () => {
-      const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
-      const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
-      const result = await model.generateContent(prompt);
-      const data = JSON.parse(result.response.text());
-      if (!data.summary || data.summary.trim().length === 0) {
-        data.summary = "No content available from meeting";
-      }
-      return summarizerOutputSchema.parse(data);
-    });
-
-    // 4. Fetch YouTube recommendations
-    const youtubeVideos = await step.run("fetch-youtube-recommendations", async () => {
-      // We use the meeting name or a quick summary for faster YT search
-      return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
-    });
+    // 3 & 4. Generate summary and YouTube suggestions in parallel
+    const [aiOutput, youtubeVideos] = await Promise.all([
+      step.run("generate-gemini-summary", async () => {
+        const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
+        const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
+        const result = await model.generateContent(prompt);
+        const data = JSON.parse(result.response.text());
+        if (!data.summary || data.summary.trim().length === 0) {
+          data.summary = "No content available from meeting";
+        }
+        return summarizerOutputSchema.parse(data);
+      }),
+      step.run("fetch-youtube-recommendations", async () => {
+        // We use the meeting name or a quick summary for faster YT search
+        return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
+      }),
+    ]);
 
     // ✅ Final Save
     await step.run("save-final-results", async () => {
