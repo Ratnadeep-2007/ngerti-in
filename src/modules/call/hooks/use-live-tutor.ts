@@ -3,6 +3,43 @@ import { useTRPC } from "@/trpc/client";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Call } from "@stream-io/video-react-sdk";
+import confetti from "canvas-confetti";
+
+const extractAndStripDrawing = (text: string) => {
+  const excalidrawRegex = /```excalidraw\n([\s\S]*?)\n```/;
+  const match = text.match(excalidrawRegex);
+  let elements: any[] = [];
+  let cleanText = text;
+
+  if (match) {
+    try {
+      elements = JSON.parse(match[1]);
+      cleanText = text.replace(excalidrawRegex, "").trim();
+    } catch (err) {
+      console.error("Failed to parse Excalidraw JSON from AI response:", err);
+    }
+  }
+
+  return { cleanText, elements };
+};
+
+const checkPraiseAndTriggerConfetti = (text: string) => {
+  const praiseKeywords = ["correct", "great job", "spot on", "awesome", "perfect", "excellent", "well done", "amazing", "wonderful", "fantastic", "spot-on"];
+  const lowerText = text.toLowerCase();
+  const hasPraise = praiseKeywords.some(keyword => lowerText.includes(keyword));
+  
+  if (hasPraise) {
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 60,
+        origin: { y: 0.5 }
+      });
+    } catch (err) {
+      console.error("Failed to run confetti:", err);
+    }
+  }
+};
 
 interface UseLiveTutorProps {
   meetingId: string;
@@ -10,6 +47,7 @@ interface UseLiveTutorProps {
   agentName: string;
   call?: Call;
   hasMicPermission?: boolean;
+  personality?: "socratic" | "eli5" | "coach";
 }
 
 export const useLiveTutor = ({
@@ -18,12 +56,15 @@ export const useLiveTutor = ({
   agentName,
   call,
   hasMicPermission = false,
+  personality,
 }: UseLiveTutorProps) => {
   const trpc = useTRPC();
   const [isTutorEnabled, setIsTutorEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [lastSpeech, setLastSpeech] = useState<{ speaker: string; text: string } | null>(null);
   
   const recognitionRef = useRef<any>(null);
@@ -34,6 +75,11 @@ export const useLiveTutor = ({
   const isTutorEnabledRef = useRef(false);
   const isListeningRef = useRef(false);
   const isThinkingRef = useRef(false);
+  const personalityRef = useRef(personality);
+
+  useEffect(() => {
+    personalityRef.current = personality;
+  }, [personality]);
 
   useEffect(() => {
     isTutorEnabledRef.current = isTutorEnabled;
@@ -88,12 +134,14 @@ export const useLiveTutor = ({
   const speakText = useCallback((text: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       isSpeakingRef.current = false;
+      setIsSpeaking(false);
       maybeRestart();
       return;
     }
 
     // Set speaking active immediately to prevent race conditions
     isSpeakingRef.current = true;
+    setIsSpeaking(true);
     lastSpeakTimeRef.current = Date.now();
 
     // Stop speech recognition while speaking to prevent feedback loop / self-interruption
@@ -122,12 +170,14 @@ export const useLiveTutor = ({
 
     utterance.onstart = () => {
       isSpeakingRef.current = true;
+      setIsSpeaking(true);
       lastSpeakTimeRef.current = Date.now();
       stopSpeechRecognition();
     };
 
     const handleSpeechEnd = () => {
       isSpeakingRef.current = false;
+      setIsSpeaking(false);
       maybeRestart();
     };
 
@@ -153,12 +203,15 @@ export const useLiveTutor = ({
       } else if (type === "user-speech") {
         setLastSpeech({ speaker: payload.userName, text: payload.text });
       } else if (type === "ai-voice") {
-        setLastSpeech({ speaker: agentName, text: payload.text });
+        const { cleanText } = extractAndStripDrawing(payload.text);
+        setLastSpeech({ speaker: agentName, text: cleanText });
         // Play speech for everyone if it wasn't played locally by the sender (e.g. whiteboard RAG vision response)
         const isSender = event.user.id === call.currentUserId;
         if (!isSender || !payload.senderPlayedLocally) {
-          speakText(payload.text);
+          speakText(cleanText);
         }
+        // Trigger confetti for praise words
+        checkPraiseAndTriggerConfetti(cleanText);
       }
     };
 
@@ -187,17 +240,28 @@ export const useLiveTutor = ({
       const response = await talkToAgent({
         meetingId,
         text,
+        personality: personalityRef.current,
       });
 
+      const { cleanText, elements } = extractAndStripDrawing(response.text);
+
       // Play locally for the sender immediately to reduce latency feel
-      speakText(response.text);
-      setLastSpeech({ speaker: agentName, text: response.text });
+      speakText(cleanText);
+      setLastSpeech({ speaker: agentName, text: cleanText });
 
       // Broadcast the response so other participants hear and see it
       call.sendCustomEvent({
         type: "ai-voice",
-        payload: { text: response.text, senderPlayedLocally: true },
+        payload: { text: cleanText, senderPlayedLocally: true },
       });
+
+      // Broadcast drawing elements to the whiteboard
+      if (elements && elements.length > 0) {
+        call.sendCustomEvent({
+          type: "ai-draw",
+          payload: { elements },
+        });
+      }
 
     } catch (err) {
       console.error("Error talking to AI:", err);
@@ -245,12 +309,13 @@ export const useLiveTutor = ({
 
     const rec = new SpeechRecognition();
     rec.continuous = false;
-    rec.interimResults = false;
+    rec.interimResults = true;
     rec.lang = "en-US";
 
     rec.onstart = () => {
       setIsListening(true);
       setTranscript("");
+      setInterimTranscript("");
     };
 
     // Immediately stop synthesis when user starts speaking (barge-in interruption)
@@ -260,6 +325,7 @@ export const useLiveTutor = ({
       if (isSpeakingRef.current && timeSinceSpeak > 1500 && window.speechSynthesis) {
         window.speechSynthesis.cancel();
         isSpeakingRef.current = false;
+        setIsSpeaking(false);
         
         // Broadcast AI is silenced to other participants
         const currentCall = callRef.current;
@@ -276,34 +342,53 @@ export const useLiveTutor = ({
     rec.onspeechstart = handleInterruption;
 
     rec.onresult = async (event: any) => {
-      const resultText = event.results[0][0].transcript;
-      setTranscript(resultText);
+      let interimTrans = "";
+      let finalTrans = "";
 
-      // Final fallback to cancel speech when transcription result is parsed
-      if (isSpeakingRef.current && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        isSpeakingRef.current = false;
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTrans += event.results[i][0].transcript;
+        } else {
+          interimTrans += event.results[i][0].transcript;
+        }
       }
 
-      const currentCall = callRef.current;
-      if (resultText.trim() && currentCall) {
-        currentCall.sendCustomEvent({
-          type: "user-speech",
-          payload: {
-            text: resultText,
-            userName: currentCall.state.localParticipant?.name || "Student",
-          },
-        });
-        setLastSpeech({
-          speaker: currentCall.state.localParticipant?.name || "Student",
-          text: resultText,
-        });
-        await handleSendToAIRef.current(resultText);
+      if (interimTrans) {
+        setInterimTranscript(interimTrans);
+      }
+
+      if (finalTrans.trim()) {
+        setInterimTranscript("");
+        setTranscript(finalTrans);
+
+        // Final fallback to cancel speech when transcription result is parsed
+        if (isSpeakingRef.current && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          isSpeakingRef.current = false;
+          setIsSpeaking(false);
+        }
+
+        const currentCall = callRef.current;
+        if (currentCall) {
+          currentCall.sendCustomEvent({
+            type: "user-speech",
+            payload: {
+              text: finalTrans,
+              userName: currentCall.state.localParticipant?.name || "Student",
+            },
+          });
+          setLastSpeech({
+            speaker: currentCall.state.localParticipant?.name || "Student",
+            text: finalTrans,
+          });
+          await handleSendToAIRef.current(finalTrans);
+        }
       }
     };
 
     rec.onerror = (e: any) => {
       const errorType = e.error;
+      setInterimTranscript("");
       if (errorType !== "aborted" && errorType !== "no-speech") {
         console.error("Speech recognition error:", errorType);
         
@@ -328,6 +413,7 @@ export const useLiveTutor = ({
     rec.onend = () => {
       setIsListening(false);
       isListeningRef.current = false;
+      setInterimTranscript("");
       maybeRestartRef.current();
     };
 
@@ -363,8 +449,10 @@ export const useLiveTutor = ({
         window.speechSynthesis.cancel();
       }
       isSpeakingRef.current = false;
+      setIsSpeaking(false);
       setIsThinking(false);
       isThinkingRef.current = false;
+      setInterimTranscript("");
     }
   }, [startSpeechRecognition, stopSpeechRecognition]);
 
@@ -372,7 +460,9 @@ export const useLiveTutor = ({
     isTutorEnabled,
     isListening,
     isThinking,
+    isSpeaking,
     transcript,
+    interimTranscript,
     lastSpeech,
     toggleTutor,
     speakText,

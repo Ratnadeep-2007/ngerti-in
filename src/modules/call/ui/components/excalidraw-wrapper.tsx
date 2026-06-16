@@ -11,6 +11,24 @@ import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCall } from "@stream-io/video-react-sdk";
 
+const extractAndStripDrawing = (text: string) => {
+  const excalidrawRegex = /```excalidraw\n([\s\S]*?)\n```/;
+  const match = text.match(excalidrawRegex);
+  let elements: any[] = [];
+  let cleanText = text;
+
+  if (match) {
+    try {
+      elements = JSON.parse(match[1]);
+      cleanText = text.replace(excalidrawRegex, "").trim();
+    } catch (err) {
+      console.error("Failed to parse Excalidraw JSON from AI response:", err);
+    }
+  }
+
+  return { cleanText, elements };
+};
+
 interface ExcalidrawWrapperProps {
   initialData?: {
     elements: any[];
@@ -93,6 +111,37 @@ const ExcalidrawWrapper = ({
     return () => clearTimeout(timer);
   }, [initialData?.elements, meetingId]);
 
+  // Listen for AI Tutor drawing events
+  useEffect(() => {
+    if (!call) return;
+
+    const handleCustomEvent = (event: any) => {
+      const { type, payload } = event.custom;
+      if (type === "ai-draw" && payload?.elements) {
+        const api = excalidrawRef.current;
+        if (api) {
+          const currentElements = api.getSceneElements() || [];
+          
+          const newElements = payload.elements.map((el: any) => ({
+            ...el,
+            id: el.id || `ai-${Date.now()}-${Math.random()}`,
+            seed: el.seed || Math.random(),
+            updated: Date.now(),
+          }));
+          
+          api.updateScene({
+            elements: [...currentElements, ...newElements],
+          });
+        }
+      }
+    };
+
+    const unsubscribe = call.on("custom", handleCustomEvent);
+    return () => {
+      unsubscribe();
+    };
+  }, [call]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -123,7 +172,7 @@ const ExcalidrawWrapper = ({
       // 2. Add text to Excalidraw
       const api = excalidrawRef.current;
       let textElement: any = null;
-      let elements: any[] = [];
+      let elements: readonly any[] = [];
       if (api) {
         elements = api.getSceneElements();
         textElement = {
@@ -241,14 +290,21 @@ const ExcalidrawWrapper = ({
 
       const data = await res.json();
       if (data.response && call) {
-        setAiResponse(data.response);
+        const { cleanText, elements: parsedElements } = extractAndStripDrawing(data.response);
+        setAiResponse(cleanText);
         call.sendCustomEvent({
           type: "ai-voice",
           payload: {
-            text: data.response,
+            text: cleanText,
             senderPlayedLocally: false, // Let the custom event handler play it locally and for everyone
           },
         });
+        if (parsedElements && parsedElements.length > 0) {
+          call.sendCustomEvent({
+            type: "ai-draw",
+            payload: { elements: parsedElements },
+          });
+        }
       }
     } catch (error) {
       console.error("Error asking AI:", error);

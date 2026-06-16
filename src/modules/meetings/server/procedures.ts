@@ -628,10 +628,11 @@ export const meetingsRouter = createTRPCRouter({
       z.object({
         meetingId: z.string(),
         text: z.string(),
+        personality: z.enum(["socratic", "eli5", "coach"]).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const { meetingId, text } = input;
+      const { meetingId, text, personality } = input;
 
       const [existingMeeting] = await db
         .select({
@@ -672,11 +673,74 @@ export const meetingsRouter = createTRPCRouter({
           parts: [{ text: message.text || "" }],
         }));
 
+      let personalityInstruction = "";
+      if (personality === "socratic") {
+        personalityInstruction = `
+          PERSONALITY TUTORING STYLE: Socratic Method.
+          - Never give the answer directly under any circumstances.
+          - Ask short, leading questions to make the student think and realize the answer on their own.
+          - Validate their progress but encourage them to take the next step.
+        `;
+      } else if (personality === "eli5") {
+        personalityInstruction = `
+          PERSONALITY TUTORING STYLE: ELI5 (Explain Like I'm 5).
+          - Use funny analogies, extremely simple child-friendly terms, and visual comparisons.
+          - Use a few emojis occasionally to make it fun.
+          - Break down complex terms into simple parts immediately.
+        `;
+      } else if (personality === "coach") {
+        personalityInstruction = `
+          PERSONALITY TUTORING STYLE: Coding/Logic Coach.
+          - Focus heavily on debugging, logical flow, optimal programming code, and code complexity.
+          - Help identify edge cases.
+          - Be analytical, encouraging, and detail-oriented.
+        `;
+      }
+
+      const drawingInstruction = `
+        WHITEBOARD INTERACTIVE CAPABILITY:
+        If you want to draw or write math formulas, equations, shapes, or text on the whiteboard to illustrate your explanation, you can append a code block of type "excalidraw" containing a JSON array of new elements at the end of your response.
+        
+        Example format:
+        \`\`\`excalidraw
+        [
+          {
+            "type": "text",
+            "x": 300,
+            "y": 150,
+            "width": 200,
+            "height": 50,
+            "text": "y = 2x + 5",
+            "fontSize": 20,
+            "strokeColor": "#a855f7"
+          },
+          {
+            "type": "arrow",
+            "x": 300,
+            "y": 210,
+            "width": 100,
+            "height": 50,
+            "points": [[0, 0], [100, 50]],
+            "strokeColor": "#3b82f6"
+          }
+        ]
+        \`\`\`
+        
+        Available shapes: "rectangle", "ellipse", "arrow", "line", "text".
+        Coordinate ranges: x: 150 to 750, y: 150 to 550.
+        Ensure elements are correctly spaced.
+        Keep the JSON valid. Do NOT speak this block out loud; it will be parsed by the client automatically. Keep the spoken text conversational and short (maximum 3 sentences).
+      `.trim();
+
       const systemInstruction = `
         You are an AI Tutor named ${agentData.name}.
         Your subject is ${agentData.subject}.
         Your system instructions/persona are:
         ${agentData.prompt}
+        
+        ${personalityInstruction}
+        
+        ${drawingInstruction}
         
         Current Meeting Context:
         ${existingMeeting.currentPrompt || "No additional context."}

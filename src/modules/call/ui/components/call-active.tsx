@@ -4,6 +4,7 @@ import {
   SpeakerLayout,
   useCallStateHooks,
   useCall,
+  ParticipantView,
 } from "@stream-io/video-react-sdk";
 import {
   Mic,
@@ -21,8 +22,10 @@ import {
   Loader2Icon,
   MessageSquare,
   X,
+  Volume2,
 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { generatedAvatarUri } from "@/lib/avatar";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -37,6 +40,144 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatProvider } from "@/modules/meetings/ui/components/chat-provider";
+
+const AITutorCard = ({
+  agentName,
+  isListening,
+  isThinking,
+  isSpeaking,
+  lastSpeech,
+  personality = "socratic",
+}: {
+  agentName: string;
+  isListening: boolean;
+  isThinking: boolean;
+  isSpeaking: boolean;
+  lastSpeech: { speaker: string; text: string } | null;
+  personality?: "socratic" | "eli5" | "coach";
+}) => {
+  // Determine Dicebear style variant
+  let avatarVariant: "botttsNeutral" | "bottts" | "lorelei" | "shapes" = "botttsNeutral";
+  if (personality === "socratic") {
+    avatarVariant = "lorelei";
+  } else if (personality === "eli5") {
+    avatarVariant = "shapes";
+  } else if (personality === "coach") {
+    avatarVariant = "bottts";
+  }
+
+  const avatarUrl = generatedAvatarUri({
+    seed: agentName || "AI Tutor",
+    variant: avatarVariant,
+  });
+
+  let statusClass = "tutor-avatar-idle";
+  let statusText = "Ready";
+  let statusColor = "bg-gray-400";
+
+  if (isSpeaking) {
+    statusClass = "tutor-avatar-speaking";
+    statusText = "Speaking";
+    statusColor = "bg-green-500";
+  } else if (isThinking) {
+    statusClass = "tutor-avatar-thinking";
+    statusText = "Thinking";
+    statusColor = "bg-purple-500";
+  } else if (isListening) {
+    statusClass = "tutor-avatar-listening";
+    statusText = "Listening";
+    statusColor = "bg-blue-500";
+  }
+
+  const tutorSpeechText = lastSpeech && lastSpeech.speaker === agentName ? lastSpeech.text : null;
+
+  return (
+    <div className="relative flex-1 flex flex-col items-center justify-center p-6 bg-zinc-950/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden min-h-[350px] transition-all duration-300">
+      <div className={`absolute -inset-10 opacity-20 blur-[80px] transition-all duration-700 pointer-events-none rounded-full ${
+        isSpeaking ? "bg-green-500/20" : isThinking ? "bg-purple-500/20" : isListening ? "bg-blue-500/20" : "bg-zinc-500/5"
+      }`} />
+
+      <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">
+        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 border border-white/10 rounded-full">
+          <Brain className="w-3.5 h-3.5 text-purple-400" />
+          <span className="text-[10px] font-bold tracking-widest text-zinc-400 uppercase">AI Participant</span>
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1 bg-black/45 border border-white/5 rounded-full">
+          <span className={`w-2 h-2 rounded-full ${statusColor} animate-pulse`} />
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-300">{statusText}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center justify-center flex-1 w-full gap-6 mt-4">
+        <div className="relative">
+          <div className={`w-32 h-32 md:w-36 md:h-36 rounded-full overflow-hidden flex items-center justify-center bg-zinc-900 border-4 transition-all duration-300 ${statusClass}`}>
+            <img 
+              src={avatarUrl} 
+              alt={agentName} 
+              className="w-24 h-24 md:w-28 md:h-28 object-contain"
+            />
+          </div>
+
+          <div className={`absolute -bottom-2 -right-2 p-2.5 rounded-full border text-white shadow-lg transition-all duration-300 ${
+            isSpeaking ? "bg-green-600 border-green-500 scale-110" :
+            isThinking ? "bg-purple-600 border-purple-500 scale-110" :
+            isListening ? "bg-blue-600 border-blue-500 scale-110" :
+            "bg-zinc-800 border-zinc-700"
+          }`}>
+            {isSpeaking ? <Volume2 className="w-5 h-5 animate-bounce" /> :
+             isThinking ? <Loader2Icon className="w-5 h-5 animate-spin" /> :
+             isListening ? <Mic className="w-5 h-5 animate-pulse" /> :
+             <BrainCircuit className="w-5 h-5" />}
+          </div>
+        </div>
+
+        <div className="text-center z-10 w-full">
+          <h3 className="text-lg font-bold tracking-tight text-white">{agentName}</h3>
+          <p className="text-xs text-zinc-400 mt-1 font-medium mb-3">
+            {isSpeaking ? "Explaining topic..." :
+             isThinking ? "Thinking..." :
+             isListening ? "Listening closely..." :
+             "Standing by"}
+          </p>
+
+          {isSpeaking && (
+            <div className="soundwave animate-in fade-in zoom-in-95 duration-200 mt-2">
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+              <div className="soundwave-bar" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="w-full max-w-md mt-auto z-10 min-h-[80px] flex items-end">
+        {tutorSpeechText ? (
+          <div className="w-full p-4 bg-zinc-950/80 border border-purple-500/30 rounded-2xl shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-300 relative">
+            <div className="absolute -top-3 left-4 px-2 py-0.5 bg-purple-600 border border-purple-400 rounded-md text-[9px] font-extrabold uppercase tracking-widest text-white">
+              {agentName}
+            </div>
+            <p className="text-sm font-medium text-zinc-200 leading-relaxed pt-1 max-h-24 overflow-y-auto pr-1">
+              {tutorSpeechText}
+            </p>
+          </div>
+        ) : isListening ? (
+          <div className="w-full py-3 text-center border border-dashed border-zinc-800 rounded-2xl bg-zinc-950/20">
+            <p className="text-xs italic text-zinc-500">Go ahead, speak to me...</p>
+          </div>
+        ) : (
+          <div className="w-full py-3 text-center border border-dashed border-zinc-800 rounded-2xl bg-zinc-950/20">
+            <p className="text-xs text-zinc-500">Enable "Talk to AI" below to start the conversation.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface CallActiveProps {
   meetingName: string;
@@ -72,15 +213,19 @@ export const CallActive = ({
 
   const isOwner = userId === creatorId;
   const [showChat, setShowChat] = useState(false);
+  const [personality, setPersonality] = useState<"socratic" | "eli5" | "coach">("socratic");
 
-  const { useMicrophoneState, useCameraState } = useCallStateHooks();
+  const { useMicrophoneState, useCameraState, useLocalParticipant } = useCallStateHooks();
   const { microphone, isMute: isMicMute, hasBrowserPermission: hasMicPermission } = useMicrophoneState();
   const { camera, isMute: isCameraMute } = useCameraState();
+  const localParticipant = useLocalParticipant();
 
   const {
     isTutorEnabled,
     isListening,
     isThinking,
+    isSpeaking,
+    interimTranscript,
     lastSpeech,
     toggleTutor,
   } = useLiveTutor({
@@ -89,6 +234,7 @@ export const CallActive = ({
     agentName: agentName || "AI Tutor",
     call: call || undefined,
     hasMicPermission,
+    personality,
   });
 
   const handleConfused = useCallback(
@@ -238,11 +384,48 @@ export const CallActive = ({
         </div>
 
         {/* Video Layout */}
-        <SpeakerLayout />
+        {isTutorEnabled && localParticipant ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0 relative z-10 mb-4 items-stretch">
+            {/* User Camera Tile */}
+            <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#1e2022]/40 backdrop-blur-md shadow-2xl flex items-center justify-center h-full min-h-[300px]">
+              <ParticipantView 
+                participant={localParticipant} 
+                ParticipantViewUI={null}
+              />
+              
+              {/* Interim Captions Bubble */}
+              {interimTranscript && (
+                <div className="absolute top-4 left-4 right-4 z-20 p-3 bg-black/85 border border-white/15 rounded-2xl shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-0.5">Captions (Live)</p>
+                  <p className="text-sm font-medium text-white/95 leading-relaxed italic">
+                    "{interimTranscript}..."
+                  </p>
+                </div>
+              )}
+
+              {/* User Name Tag overlay */}
+              <div className="absolute bottom-4 left-4 px-3 py-1 bg-black/60 border border-white/10 backdrop-blur-md rounded-full text-xs font-semibold text-white/90">
+                You ({localParticipant.name || "Student"})
+              </div>
+            </div>
+
+            {/* Custom AI Tutor Card */}
+            <AITutorCard
+              agentName={agentName || "AI Tutor"}
+              isListening={isListening}
+              isThinking={isThinking}
+              isSpeaking={isSpeaking}
+              lastSpeech={lastSpeech}
+              personality={personality}
+            />
+          </div>
+        ) : (
+          <SpeakerLayout />
+        )}
 
         {/* AI Tutor Overlay widgets */}
         <div className="flex flex-col gap-2 z-10 w-full max-w-xl mx-auto absolute bottom-28 left-1/2 -translate-x-1/2 px-4 pointer-events-none">
-          {isListening && (
+          {!isTutorEnabled && isListening && (
             <div className="flex items-center gap-3 px-4 py-2 bg-red-600/35 border border-red-500/45 backdrop-blur-md rounded-full shadow-lg text-sm text-red-100 w-fit mx-auto animate-pulse">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -252,14 +435,14 @@ export const CallActive = ({
             </div>
           )}
 
-          {isThinking && (
+          {!isTutorEnabled && isThinking && (
             <div className="flex items-center gap-3 px-4 py-2 bg-purple-600/35 border border-purple-500/45 backdrop-blur-md rounded-full shadow-lg text-sm text-purple-100 w-fit mx-auto">
               <Loader2Icon className="size-4 animate-spin text-purple-400" />
               <span className="font-semibold tracking-wide">{agentName || "AI Tutor"} is thinking...</span>
             </div>
           )}
 
-          {lastSpeech && (
+          {lastSpeech && (!isTutorEnabled || lastSpeech.speaker !== agentName) && (
             <div className="text-center px-6 py-2.5 bg-black/85 border border-white/10 backdrop-blur-md rounded-2xl shadow-xl max-h-24 overflow-y-auto pointer-events-auto">
               <p className="text-xs font-semibold text-purple-400 tracking-widest uppercase mb-1">{lastSpeech.speaker}</p>
               <p className="text-sm font-medium text-white/95 leading-relaxed">{lastSpeech.text}</p>
@@ -338,6 +521,20 @@ export const CallActive = ({
               onCheckedChange={toggleTutor}
               className="data-[state=checked]:bg-purple-600"
             />
+          </div>
+
+          {/* Personality Selector */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#171a1c] border border-white/10 rounded-full hover:border-purple-500/30 transition-all duration-200 shadow-md">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest pl-1 select-none">Style:</span>
+            <select
+              value={personality}
+              onChange={(e) => setPersonality(e.target.value as any)}
+              className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer pr-2 border-none focus:ring-0"
+            >
+              <option value="socratic" className="bg-[#101213] text-white font-medium">🤔 Socratic</option>
+              <option value="eli5" className="bg-[#101213] text-white font-medium">👶 ELI5</option>
+              <option value="coach" className="bg-[#101213] text-white font-medium">💻 Coach</option>
+            </select>
           </div>
 
           <div className="w-[1px] h-10 bg-white/10 mx-1" />
