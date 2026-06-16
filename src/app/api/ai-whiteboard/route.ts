@@ -17,7 +17,16 @@ interface ExcalidrawElement {
 }
 
 export async function POST(req: NextRequest) {
-  const { elements, appState, meetingId, imageBase64 } = await req.json();
+  let requestBody;
+  try {
+    requestBody = await req.json();
+  } catch (parseErr) {
+    console.error("[Whiteboard API] Failed to parse request JSON body:", parseErr);
+    return NextResponse.json({ error: "Invalid JSON request body" }, { status: 400 });
+  }
+
+  const { elements = [], appState, meetingId, imageBase64 } = requestBody;
+  console.log(`[Whiteboard API] Processing POST request for meetingId: ${meetingId}, elements count: ${elements.length}, snapshot present: ${!!imageBase64}`);
 
   // 1. Ekstrak elemen text dari Excalidraw scene
   const texts = elements
@@ -27,6 +36,7 @@ export async function POST(req: NextRequest) {
   // 2. (Opsional) OCR jika perlu, tambahkan di sini
   let ocrText = "";
   if (imageBase64) {
+    console.log(`[Whiteboard API] Transcribing whiteboard snapshot for meetingId: ${meetingId}`);
     try {
       const pureBase64 = imageBase64.startsWith("data:")
         ? imageBase64.split(",")[1]
@@ -43,8 +53,9 @@ export async function POST(req: NextRequest) {
         }
       ]);
       ocrText = result.response.text();
+      console.log(`[Whiteboard API] OCR transcription successful for meetingId: ${meetingId}`);
     } catch (err) {
-      console.error("Vision API Error:", err);
+      console.error(`[Whiteboard API] Vision OCR API Error for meetingId ${meetingId}:`, err);
       ocrText = "";
     }
   }
@@ -57,29 +68,44 @@ export async function POST(req: NextRequest) {
     ]
       .filter(Boolean)
       .join("\n\n") || "Whiteboard is empty or contains only drawings.";
-  console.log(
-    texts.length
-      ? "Texts found on whiteboard:"
-      : "No texts found on whiteboard."
-  );
-  console.log("Whiteboard Summary:", whiteboardSummary);
+
+  console.log(`[Whiteboard API] Whiteboard context compilation complete. Texts: ${texts.length}, OCR length: ${ocrText.length}`);
+
   // 4. Query DB untuk agent dan meeting
-  const [meeting] = await db
-    .select()
-    .from(meetings)
-    .where(eq(meetings.id, meetingId));
+  let meeting;
+  try {
+    const results = await db
+      .select()
+      .from(meetings)
+      .where(eq(meetings.id, meetingId));
+    meeting = results[0];
+  } catch (dbErr) {
+    console.error(`[Whiteboard API] Database error fetching meeting with ID ${meetingId}:`, dbErr);
+    return NextResponse.json({ error: "Internal database error" }, { status: 500 });
+  }
+
   if (!meeting) {
+    console.warn(`[Whiteboard API] Meeting not found: ${meetingId}`);
     return NextResponse.json(
       { error: "Meeting tidak ditemukan" },
       { status: 404 }
     );
   }
 
-  const [agent] = await db
-    .select()
-    .from(agents)
-    .where(eq(agents.id, meeting.agentId));
+  let agent;
+  try {
+    const results = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.id, meeting.agentId));
+    agent = results[0];
+  } catch (dbErr) {
+    console.error(`[Whiteboard API] Database error fetching agent with ID ${meeting.agentId}:`, dbErr);
+    return NextResponse.json({ error: "Internal database error" }, { status: 500 });
+  }
+
   if (!agent) {
+    console.warn(`[Whiteboard API] AI Agent not found: ${meeting.agentId} for meeting ${meetingId}`);
     return NextResponse.json(
       { error: "AI Agent tidak ditemukan" },
       { status: 404 }
@@ -87,11 +113,17 @@ export async function POST(req: NextRequest) {
   }
 
   // 4.5 Search Knowledge Base (RAG)
-  const kbResults = await queryKnowledgeBase(
-    agent.id,
-    meeting.userId,
-    whiteboardSummary,
-  );
+  let kbResults: any[] = [];
+  try {
+    kbResults = await queryKnowledgeBase(
+      agent.id,
+      meeting.userId,
+      whiteboardSummary,
+    );
+    console.log(`[Whiteboard API] RAG search returned ${kbResults.length} knowledge base matches`);
+  } catch (kbErr) {
+    console.error(`[Whiteboard API] Knowledge Base query failed for agent ${agent.id}, user ${meeting.userId}:`, kbErr);
+  }
 
   const kbContext = kbResults.length > 0 
     ? "\n\n[TEXTBOOK KNOWLEDGE BASE]\n" + kbResults.map(r => `From ${r.filename}: ${r.content}`).join("\n---\n")
@@ -114,10 +146,15 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
     updatePayload.whiteboardSnapshot = imageBase64;
   }
 
-  await db
-    .update(meetings)
-    .set(updatePayload)
-    .where(eq(meetings.id, meetingId));
+  try {
+    await db
+      .update(meetings)
+      .set(updatePayload)
+      .where(eq(meetings.id, meetingId));
+    console.log(`[Whiteboard API] Successfully saved currentPrompt and snapshot to DB for meeting ${meetingId}`);
+  } catch (dbUpdateErr) {
+    console.error(`[Whiteboard API] Database update failed for meeting ${meetingId}:`, dbUpdateErr);
+  }
 
   // 6. Suggest YouTube Videos (RAG-enhanced context)
   try {
@@ -130,9 +167,10 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
           updatedAt: new Date(),
         })
         .where(eq(meetings.id, meetingId));
+      console.log(`[Whiteboard API] Successfully suggested and saved ${videos.length} YT videos for meeting ${meetingId}`);
     }
   } catch (err) {
-    console.error("Failed to suggest YT videos:", err);
+    console.error(`[Whiteboard API] Failed to suggest or save YT videos for meeting ${meetingId}:`, err);
   }
 
   // 7. Generate explanation of whiteboard contents in Tutor's Persona

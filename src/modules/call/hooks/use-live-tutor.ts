@@ -250,8 +250,12 @@ export const useLiveTutor = ({
 
   // Handle sending text to AI agent
   const handleSendToAI = async (text: string) => {
-    if (!text.trim() || isThinkingRef.current || !call) return;
+    if (!text.trim() || isThinkingRef.current || !call) {
+      console.warn(`[useLiveTutor] handleSendToAI skipped. Text length: ${text?.trim()?.length}, isThinking: ${isThinkingRef.current}, callInitialized: ${!!call}`);
+      return;
+    }
 
+    console.log(`[useLiveTutor] Sending text to AI tutor for meeting: ${meetingId}. Text: "${text}"`);
     // Stop listening during processing
     stopSpeechRecognition();
 
@@ -260,6 +264,8 @@ export const useLiveTutor = ({
     call.sendCustomEvent({
       type: "ai-thinking",
       payload: { active: true },
+    }).catch(err => {
+      console.error("[useLiveTutor] Failed to broadcast ai-thinking (active) custom event:", err);
     });
 
     try {
@@ -271,6 +277,7 @@ export const useLiveTutor = ({
         language: languageRef.current,
       });
 
+      console.log(`[useLiveTutor] Received response from tRPC agent for meeting: ${meetingId}`);
       const { cleanText, elements } = extractAndStripDrawing(response.text);
 
       // Play locally for the sender immediately to reduce latency feel
@@ -281,18 +288,23 @@ export const useLiveTutor = ({
       call.sendCustomEvent({
         type: "ai-voice",
         payload: { text: cleanText, senderPlayedLocally: true },
+      }).catch(err => {
+        console.error("[useLiveTutor] Failed to broadcast ai-voice response custom event:", err);
       });
 
       // Broadcast drawing elements to the whiteboard
       if (elements && elements.length > 0) {
+        console.log(`[useLiveTutor] Broadcasting ${elements.length} Excalidraw elements for meeting: ${meetingId}`);
         call.sendCustomEvent({
           type: "ai-draw",
           payload: { elements },
+        }).catch(err => {
+          console.error("[useLiveTutor] Failed to broadcast ai-draw custom event:", err);
         });
       }
 
     } catch (err) {
-      console.error("Error talking to AI:", err);
+      console.error(`[useLiveTutor] Error talking to AI tutor for meeting ${meetingId}:`, err);
       toast.error("Failed to get response from AI Tutor");
       maybeRestart();
     } finally {
@@ -300,6 +312,8 @@ export const useLiveTutor = ({
       call.sendCustomEvent({
         type: "ai-thinking",
         payload: { active: false },
+      }).catch(err => {
+        console.error("[useLiveTutor] Failed to broadcast ai-thinking (inactive) custom event:", err);
       });
       // Fallback delay restart in case speech synthesis failed to invoke start/end events
       setTimeout(() => {

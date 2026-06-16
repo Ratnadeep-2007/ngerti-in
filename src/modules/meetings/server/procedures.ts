@@ -634,25 +634,38 @@ export const meetingsRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       const { meetingId, text, personality, language } = input;
+      console.log(`[TRPC talkToAgent] Request for meetingId: ${meetingId}, user: ${ctx.userId.user.id}, text: "${text.substring(0, 50)}...", personality: ${personality}, language: ${language}`);
 
-      const [existingMeeting] = await db
-        .select({
-          ...getTableColumns(meetings),
-          agent: agents,
-        })
-        .from(meetings)
-        .innerJoin(agents, eq(meetings.agentId, agents.id))
-        .where(
-          and(
-            eq(meetings.id, meetingId),
-            or(
-              eq(meetings.userId, ctx.userId.user.id),
-              eq(meetings.isPublic, true),
+      let existingMeeting;
+      try {
+        const results = await db
+          .select({
+            ...getTableColumns(meetings),
+            agent: agents,
+          })
+          .from(meetings)
+          .innerJoin(agents, eq(meetings.agentId, agents.id))
+          .where(
+            and(
+              eq(meetings.id, meetingId),
+              or(
+                eq(meetings.userId, ctx.userId.user.id),
+                eq(meetings.isPublic, true),
+              ),
             ),
-          ),
-        );
+          );
+        existingMeeting = results[0];
+      } catch (dbErr) {
+        console.error(`[TRPC talkToAgent] Database select error for meeting ${meetingId}:`, dbErr);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Database query failed",
+          cause: dbErr,
+        });
+      }
 
       if (!existingMeeting) {
+        console.warn(`[TRPC talkToAgent] Meeting not found or unauthorized: ${meetingId} for user ${ctx.userId.user.id}`);
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Meeting not found",
@@ -661,15 +674,21 @@ export const meetingsRouter = createTRPCRouter({
 
       const agentData = existingMeeting.agent;
 
-      const channel = streamChat.channel("messaging", meetingId, {
-        created_by_id: ctx.userId.user.id,
-      });
-      await channel.create();
-      
-      const messages = await channel.query({ messages: { limit: 10 } });
+      let channel;
+      let messages: any = { messages: [] };
+      try {
+        channel = streamChat.channel("messaging", meetingId, {
+          created_by_id: ctx.userId.user.id,
+        });
+        await channel.create();
+        messages = await channel.query({ messages: { limit: 10 } });
+      } catch (streamChatErr) {
+        console.error(`[TRPC talkToAgent] Stream Chat API failure for meeting ${meetingId}:`, streamChatErr);
+      }
+
       const history = (messages.messages || [])
-        .filter((msg) => msg.text && msg.text.trim() !== "")
-        .map((message) => ({
+        .filter((msg: any) => msg.text && msg.text.trim() !== "")
+        .map((message: any) => ({
           role: message.user?.id === agentData.id ? "model" : "user",
           parts: [{ text: message.text || "" }],
         }));
@@ -771,19 +790,26 @@ export const meetingsRouter = createTRPCRouter({
 
       const formattedMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
         { role: "system", content: systemInstruction },
-        ...history.map((h) => ({
+        ...history.map((h: any) => ({
           role: h.role === "model" ? ("assistant" as const) : ("user" as const),
           content: h.parts[0].text,
         })),
         { role: "user" as const, content: text },
-      ];
-
-      const aiResponse = await generateNvidiaResponse(formattedMessages);
-
-      if (!aiResponse) {
+      ];      
+      
+      let aiResponse = "";
+      try {
+        const response = await generateNvidiaResponse(formattedMessages);
+        if (!response) {
+          throw new Error("generateNvidiaResponse returned empty or falsy response");
+        }
+        aiResponse = response;
+      } catch (nvidiaErr) {
+        console.error(`[TRPC talkToAgent] NVIDIA NIM API invocation failure for meeting ${meetingId}:`, nvidiaErr);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "No response from NVIDIA NIM",
+          cause: nvidiaErr,
         });
       }
 
@@ -795,24 +821,31 @@ export const meetingsRouter = createTRPCRouter({
       // Run Stream Chat sync in the background to avoid blocking the voice response (saves ~400-800ms latency)
       const fakeMessageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       
-      streamChat.upsertUser({
-        id: agentData.id,
-        name: agentData.name,
-        image: avatarUrl,
-        role: "user",
-      })
-      .then(() => channel.addMembers([agentData.id]))
-      .then(() => channel.sendMessage({
-        text: aiResponse,
-        user: {
+      if (channel) {
+        streamChat.upsertUser({
           id: agentData.id,
           name: agentData.name,
           image: avatarUrl,
-        },
-      }))
-      .catch((chatError) => {
-        console.error("Failed to sync message to Stream Chat in background:", chatError);
-      });
+          role: "user",
+        })
+        .then(() => channel.addMembers([agentData.id]))
+        .then(() => channel.sendMessage({
+          text: aiResponse,
+          user: {
+            id: agentData.id,
+            name: agentData.name,
+            image: avatarUrl,
+          },
+        }))
+        .then(() => {
+          console.log(`[TRPC talkToAgent] Successfully synchronized AI response message to Stream Chat channel ${meetingId}`);
+        })
+        .catch((chatError) => {
+          console.error(`[TRPC talkToAgent] Failed to sync AI response to Stream Chat in background:`, chatError);
+        });
+      } else {
+        console.warn(`[TRPC talkToAgent] Stream Chat channel was not initialized; skipping background chat message sync.`);
+      }
 
       return {
         text: aiResponse,

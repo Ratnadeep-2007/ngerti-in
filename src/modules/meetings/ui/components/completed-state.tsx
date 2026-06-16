@@ -46,6 +46,7 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
   const [isFlipped, setIsFlipped] = React.useState(false);
 
   const handleExportPDF = () => {
+    console.log(`[completed-state] Starting PDF generation for session: ${data.id} (${data.name})`);
     try {
       const doc = new jsPDF({
         orientation: "portrait",
@@ -196,9 +197,10 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
       }
 
       doc.save(`lumina-study-guide-${title.toLowerCase().replace(/\s+/g, "-")}.pdf`);
+      console.log(`[completed-state] PDF successfully generated and downloaded for session: ${data.id}`);
       toast.success("Study guide PDF downloaded!");
     } catch (err) {
-      console.error("Failed to generate PDF:", err);
+      console.error("[completed-state] Failed to generate study guide PDF:", err);
       toast.error("Failed to generate study guide PDF");
     }
   };
@@ -210,30 +212,40 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
   };
 
   const handleExportFlashcards = () => {
-    if (!quiz) return;
+    console.log(`[completed-state] Exporting flashcards for session: ${data.id}`);
+    if (!quiz) {
+      console.warn("[completed-state] Quiz data is empty; Anki export aborted.");
+      return;
+    }
 
-    // Format: Front, Back
-    // For Anki: "Question","Answer"
-    const csvContent = quiz
-      .map((q: any) => {
-        const question = q.question.replace(/"/g, '""');
-        const answer = q.options[q.correctAnswer].replace(/"/g, '""');
-        return `"${question}","${answer}"`;
-      })
-      .join("\n");
+    try {
+      // Format: Front, Back
+      // For Anki: "Question","Answer"
+      const csvContent = quiz
+        .map((q: any) => {
+          const question = q.question.replace(/"/g, '""');
+          const answer = q.options[q.correctAnswer].replace(/"/g, '""');
+          return `"${question}","${answer}"`;
+        })
+        .join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `lumina-ai-flashcards-${data.name.toLowerCase().replace(/\s+/g, "-")}.csv`,
-    );
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `lumina-ai-flashcards-${data.name.toLowerCase().replace(/\s+/g, "-")}.csv`,
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      console.log(`[completed-state] Flashcards exported successfully for session: ${data.id}`);
+    } catch (err) {
+      console.error("[completed-state] Failed to export flashcards CSV:", err);
+      toast.error("Failed to export flashcards");
+    }
   };
 
   return (

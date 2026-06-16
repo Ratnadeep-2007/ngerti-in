@@ -74,32 +74,51 @@ const meetingsProcessing = inngest.createFunction(
   { id: "meetings/processing", triggers: [{ event: "meetings/processing" }] },
   async ({ event, step }) => {
     const { transcriptUrl, meeting_id } = event.data;
-    if (!transcriptUrl) throw new Error("Missing transcript_url");
+    if (!transcriptUrl) {
+      console.error(`[Inngest meetingsProcessing] Failed: Missing transcriptUrl for meeting ${meeting_id}`);
+      throw new Error("Missing transcript_url");
+    }
 
     // 1. Fetch and parse transcript
     const transcript = await step.run("fetch-and-parse-transcript", async () => {
-      const res = await fetch(transcriptUrl);
-      const text = await res.text();
-      return JSONL.parse<StreamTranscriptItem>(text);
+      console.log(`[Inngest meetingsProcessing] Fetching transcript from ${transcriptUrl} for meeting ${meeting_id}`);
+      try {
+        const res = await fetch(transcriptUrl);
+        if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
+        const text = await res.text();
+        const parsed = JSONL.parse<StreamTranscriptItem>(text);
+        console.log(`[Inngest meetingsProcessing] Successfully parsed ${parsed.length} transcript lines`);
+        return parsed;
+      } catch (err) {
+        console.error(`[Inngest meetingsProcessing] Failed to fetch or parse transcript from URL ${transcriptUrl}:`, err);
+        throw err;
+      }
     });
 
     // 2. Identify speakers
     const speakers = await step.run("get-relevant-speakers", async () => {
-      const [meetingData] = await db
-        .select()
-        .from(meetings)
-        .where(eq(meetings.id, meeting_id))
-        .limit(1);
+      console.log(`[Inngest meetingsProcessing] Fetching meeting, user, and agent details for meeting ${meeting_id}`);
+      try {
+        const [meetingData] = await db
+          .select()
+          .from(meetings)
+          .where(eq(meetings.id, meeting_id))
+          .limit(1);
 
-      if (!meetingData) {
-        throw new Error(`Meeting not found: ${meeting_id}`);
+        if (!meetingData) {
+          throw new Error(`Meeting not found: ${meeting_id}`);
+        }
+
+        const [users, agentsList] = await Promise.all([
+          db.select().from(user).where(eq(user.id, meetingData.userId)),
+          db.select().from(agents).where(eq(agents.id, meetingData.agentId)),
+        ]);
+        console.log(`[Inngest meetingsProcessing] Found ${users.length} users and ${agentsList.length} agents matching the session`);
+        return { users, agents: agentsList };
+      } catch (err) {
+        console.error(`[Inngest meetingsProcessing] Database fetch failure in get-relevant-speakers for meeting ${meeting_id}:`, err);
+        throw err;
       }
-
-      const [users, agentsList] = await Promise.all([
-        db.select().from(user).where(eq(user.id, meetingData.userId)),
-        db.select().from(agents).where(eq(agents.id, meetingData.agentId)),
-      ]);
-      return { users, agents: agentsList };
     });
 
     // ✅ Map speakers to transcript
@@ -112,51 +131,85 @@ const meetingsProcessing = inngest.createFunction(
     const hasContent = transcriptWithSpeakers.some(t => t.text && t.text.trim().length > 0);
 
     if (!hasContent) {
+      console.warn(`[Inngest meetingsProcessing] Transcript contains no spoken text content for meeting ${meeting_id}. Skipping summary.`);
       await step.run("save-final-results", async () => {
-        await db.update(meetings)
-          .set({
-            summary: "No content available from meeting",
-            quiz: JSON.stringify([]),
-            learningPath: JSON.stringify([]),
-            suggestedVideos: JSON.stringify([]),
-            topics: JSON.stringify([]),
-            status: "completed",
-          })
-          .where(eq(meetings.id, meeting_id));
+        try {
+          await db.update(meetings)
+            .set({
+              summary: "No content available from meeting",
+              quiz: JSON.stringify([]),
+              learningPath: JSON.stringify([]),
+              suggestedVideos: JSON.stringify([]),
+              topics: JSON.stringify([]),
+              status: "completed",
+            })
+            .where(eq(meetings.id, meeting_id));
+        } catch (saveErr) {
+          console.error(`[Inngest meetingsProcessing] Failed to save fallback empty results to DB for meeting ${meeting_id}:`, saveErr);
+          throw saveErr;
+        }
       });
       return;
     }
 
     // 3 & 4. Generate summary and YouTube suggestions in parallel
-    const [aiOutput, youtubeVideos] = await Promise.all([
-      step.run("generate-gemini-summary", async () => {
-        const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
-        const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
-        const result = await model.generateContent(prompt);
-        const data = JSON.parse(result.response.text());
-        if (!data.summary || data.summary.trim().length === 0) {
-          data.summary = "No content available from meeting";
-        }
-        return summarizerOutputSchema.parse(data);
-      }),
-      step.run("fetch-youtube-recommendations", async () => {
-        // We use the meeting name or a quick summary for faster YT search
-        return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
-      }),
-    ]);
+    let aiOutput: any;
+    let youtubeVideos: any;
+    try {
+      console.log(`[Inngest meetingsProcessing] Invoking Gemini and YouTube suggestions in parallel for meeting ${meeting_id}`);
+      const [aiOutputRes, youtubeVideosRes] = await Promise.all([
+        step.run("generate-gemini-summary", async () => {
+          try {
+            const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
+            const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
+            const result = await model.generateContent(prompt);
+            const textResponse = result.response.text();
+            if (!textResponse) throw new Error("Gemini response is empty");
+            const data = JSON.parse(textResponse);
+            if (!data.summary || data.summary.trim().length === 0) {
+              data.summary = "No content available from meeting";
+            }
+            return summarizerOutputSchema.parse(data);
+          } catch (geminiErr) {
+            console.error(`[Inngest meetingsProcessing] generate-gemini-summary step failed:`, geminiErr);
+            throw geminiErr;
+          }
+        }),
+        step.run("fetch-youtube-recommendations", async () => {
+          try {
+            return await suggestYouTubeVideos(transcriptWithSpeakers.slice(0, 5).map(t => t.text).join(" "));
+          } catch (ytErr) {
+            console.error(`[Inngest meetingsProcessing] fetch-youtube-recommendations step failed:`, ytErr);
+            return [];
+          }
+        }),
+      ]);
+      aiOutput = aiOutputRes;
+      youtubeVideos = youtubeVideosRes;
+    } catch (parallelErr) {
+      console.error(`[Inngest meetingsProcessing] Concurrency steps failed:`, parallelErr);
+      throw parallelErr;
+    }
 
     // ✅ Final Save
     await step.run("save-final-results", async () => {
-      await db.update(meetings)
-        .set({
-          summary: aiOutput.summary,
-          quiz: JSON.stringify(aiOutput.quiz),
-          learningPath: JSON.stringify(aiOutput.learningPath),
-          suggestedVideos: JSON.stringify(youtubeVideos),
-          topics: JSON.stringify(aiOutput.topics || []),
-          status: "completed",
-        })
-        .where(eq(meetings.id, meeting_id));
+      console.log(`[Inngest meetingsProcessing] Saving final summarized results to database for meeting ${meeting_id}`);
+      try {
+        await db.update(meetings)
+          .set({
+            summary: aiOutput.summary,
+            quiz: JSON.stringify(aiOutput.quiz),
+            learningPath: JSON.stringify(aiOutput.learningPath),
+            suggestedVideos: JSON.stringify(youtubeVideos),
+            topics: JSON.stringify(aiOutput.topics || []),
+            status: "completed",
+          })
+          .where(eq(meetings.id, meeting_id));
+        console.log(`[Inngest meetingsProcessing] Successfully processed and marked meeting ${meeting_id} as completed`);
+      } catch (saveErr) {
+        console.error(`[Inngest meetingsProcessing] Failed to save final processing results to DB for meeting ${meeting_id}:`, saveErr);
+        throw saveErr;
+      }
     });
   },
 );
