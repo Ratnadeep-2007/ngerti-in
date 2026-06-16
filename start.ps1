@@ -9,9 +9,24 @@ if ($processId) {
 
 # 1. Start Cloudflare Tunnel
 Write-Host "Starting Cloudflare tunnel..." -ForegroundColor Cyan
+$cloudflaredCmd = "cloudflared"
 if (!(Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-    Write-Host "Error: cloudflared is not installed. Please install it and try again." -ForegroundColor Red
-    return
+    $fallbackPaths = @(
+        "C:\Program Files (x86)\cloudflared\cloudflared.exe",
+        "C:\Program Files\cloudflared\cloudflared.exe"
+    )
+    $foundFallback = $false
+    foreach ($path in $fallbackPaths) {
+        if (Test-Path $path) {
+            $cloudflaredCmd = $path
+            $foundFallback = $true
+            break
+        }
+    }
+    if (!$foundFallback) {
+        Write-Host "Error: cloudflared is not installed. Please install it and try again." -ForegroundColor Red
+        return
+    }
 }
 
 # Remove old log files to ensure we don't read a stale URL
@@ -19,7 +34,7 @@ Remove-Item "cloudflared.log" -ErrorAction SilentlyContinue
 Remove-Item "cloudflared.err" -ErrorAction SilentlyContinue
 
 # Start cloudflared in background and redirect outputs separately
-Start-Process cloudflared -ArgumentList "tunnel --url http://localhost:3006" -RedirectStandardOutput "cloudflared.log" -RedirectStandardError "cloudflared.err" -NoNewWindow
+Start-Process $cloudflaredCmd -ArgumentList "tunnel --url http://localhost:3006" -RedirectStandardOutput "cloudflared.log" -RedirectStandardError "cloudflared.err" -NoNewWindow
 
 # 2. Wait for Cloudflare URL
 Write-Host "Waiting for Cloudflare tunnel URL..." -ForegroundColor Cyan

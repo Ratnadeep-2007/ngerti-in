@@ -386,7 +386,7 @@ export const CallActive = ({
         </div>
 
         {/* Video Layout */}
-        {isTutorEnabled && localParticipant ? (
+        {localParticipant ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0 relative z-10 mb-4 items-stretch">
             {/* User Camera Tile */}
             <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#1e2022]/40 backdrop-blur-md shadow-2xl flex items-center justify-center h-full min-h-[300px]">
