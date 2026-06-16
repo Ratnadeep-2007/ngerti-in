@@ -629,10 +629,11 @@ export const meetingsRouter = createTRPCRouter({
         meetingId: z.string(),
         text: z.string(),
         personality: z.enum(["socratic", "eli5", "coach"]).optional(),
+        language: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const { meetingId, text, personality } = input;
+      const { meetingId, text, personality, language } = input;
 
       const [existingMeeting] = await db
         .select({
@@ -696,6 +697,22 @@ export const meetingsRouter = createTRPCRouter({
           - Be analytical, encouraging, and detail-oriented.
         `;
       }
+      
+      let languageInstruction = "";
+      if (language) {
+        const langMap: Record<string, string> = {
+          "en-US": "English",
+          "id-ID": "Indonesian",
+          "es-ES": "Spanish",
+          "hi-IN": "Hindi",
+        };
+        const langName = langMap[language] || "English";
+        languageInstruction = `
+          CRITICAL MULTILINGUAL INSTRUCTION:
+          You MUST conduct the tutoring session and respond in the following language: ${langName} (${language}).
+          All explanations, responses, and questions should be written in ${langName}.
+        `;
+      }
 
       const drawingInstruction = `
         WHITEBOARD INTERACTIVE CAPABILITY:
@@ -739,6 +756,8 @@ export const meetingsRouter = createTRPCRouter({
         ${agentData.prompt}
         
         ${personalityInstruction}
+        
+        ${languageInstruction}
         
         ${drawingInstruction}
         

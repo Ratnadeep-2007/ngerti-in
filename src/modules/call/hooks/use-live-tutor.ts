@@ -48,6 +48,7 @@ interface UseLiveTutorProps {
   call?: Call;
   hasMicPermission?: boolean;
   personality?: "socratic" | "eli5" | "coach";
+  language?: string;
 }
 
 export const useLiveTutor = ({
@@ -57,6 +58,7 @@ export const useLiveTutor = ({
   call,
   hasMicPermission = false,
   personality,
+  language,
 }: UseLiveTutorProps) => {
   const trpc = useTRPC();
   const [isTutorEnabled, setIsTutorEnabled] = useState(false);
@@ -76,6 +78,7 @@ export const useLiveTutor = ({
   const isListeningRef = useRef(false);
   const isThinkingRef = useRef(false);
   const personalityRef = useRef(personality);
+  const languageRef = useRef(language || "en-US");
 
   useEffect(() => {
     personalityRef.current = personality;
@@ -119,6 +122,21 @@ export const useLiveTutor = ({
     }
   }, []);
 
+  useEffect(() => {
+    languageRef.current = language || "en-US";
+    if (recognitionRef.current) {
+      recognitionRef.current.lang = language || "en-US";
+      if (isListeningRef.current) {
+        stopSpeechRecognition();
+        setTimeout(() => {
+          if (isTutorEnabledRef.current && !isThinkingRef.current && !isSpeakingRef.current) {
+            startSpeechRecognition();
+          }
+        }, 100);
+      }
+    }
+  }, [language, startSpeechRecognition, stopSpeechRecognition]);
+
   // Check and restart listening if applicable
   const maybeRestart = useCallback(() => {
     if (isTutorEnabledRef.current && !isThinkingRef.current && !isSpeakingRef.current) {
@@ -156,17 +174,26 @@ export const useLiveTutor = ({
     window.speechSynthesis.cancel(); // Stop any current speech
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = "en-US";
+    utterance.lang = languageRef.current;
     
-    // Choose a friendly voice if available
+    // Choose a friendly voice matching the language if available
     const voices = window.speechSynthesis.getVoices();
-    const friendlyVoice = voices.find(
-      (v) =>
-        v.name.includes("Google US English") ||
-        v.name.includes("Natural") ||
-        v.name.includes("Samantha"),
-    );
-    if (friendlyVoice) utterance.voice = friendlyVoice;
+    let voice = voices.find(v => v.lang.toLowerCase() === languageRef.current.toLowerCase());
+    if (!voice) {
+      const langPrefix = languageRef.current.split("-")[0].toLowerCase();
+      voice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
+    }
+    
+    if (languageRef.current.startsWith("en")) {
+      const friendlyVoice = voices.find(
+        (v) =>
+          v.name.includes("Google US English") ||
+          v.name.includes("Natural") ||
+          v.name.includes("Samantha"),
+      );
+      if (friendlyVoice) voice = friendlyVoice;
+    }
+    if (voice) utterance.voice = voice;
 
     utterance.onstart = () => {
       isSpeakingRef.current = true;
@@ -241,6 +268,7 @@ export const useLiveTutor = ({
         meetingId,
         text,
         personality: personalityRef.current,
+        language: languageRef.current,
       });
 
       const { cleanText, elements } = extractAndStripDrawing(response.text);
@@ -310,7 +338,7 @@ export const useLiveTutor = ({
     const rec = new SpeechRecognition();
     rec.continuous = false;
     rec.interimResults = true;
-    rec.lang = "en-US";
+    rec.lang = languageRef.current;
 
     rec.onstart = () => {
       setIsListening(true);

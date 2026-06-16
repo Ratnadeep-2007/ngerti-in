@@ -214,6 +214,7 @@ export const CallActive = ({
   const isOwner = userId === creatorId;
   const [showChat, setShowChat] = useState(false);
   const [personality, setPersonality] = useState<"socratic" | "eli5" | "coach">("socratic");
+  const [language, setLanguage] = useState<string>("en-US");
 
   const { useMicrophoneState, useCameraState, useLocalParticipant } = useCallStateHooks();
   const { microphone, isMute: isMicMute, hasBrowserPermission: hasMicPermission } = useMicrophoneState();
@@ -235,6 +236,7 @@ export const CallActive = ({
     call: call || undefined,
     hasMicPermission,
     personality,
+    language,
   });
 
   const handleConfused = useCallback(
@@ -534,6 +536,21 @@ export const CallActive = ({
               <option value="socratic" className="bg-[#101213] text-white font-medium">🤔 Socratic</option>
               <option value="eli5" className="bg-[#101213] text-white font-medium">👶 ELI5</option>
               <option value="coach" className="bg-[#101213] text-white font-medium">💻 Coach</option>
+            </select>
+          </div>
+
+          {/* Language Selector */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#171a1c] border border-white/10 rounded-full hover:border-purple-500/30 transition-all duration-200 shadow-md">
+            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest pl-1 select-none">Lang:</span>
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer pr-2 border-none focus:ring-0"
+            >
+              <option value="en-US" className="bg-[#101213] text-white font-medium">🇺🇸 English</option>
+              <option value="id-ID" className="bg-[#101213] text-white font-medium">🇮🇩 Indonesian</option>
+              <option value="es-ES" className="bg-[#101213] text-white font-medium">🇪🇸 Spanish</option>
+              <option value="hi-IN" className="bg-[#101213] text-white font-medium">🇮🇳 Hindi</option>
             </select>
           </div>
 

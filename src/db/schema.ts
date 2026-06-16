@@ -173,6 +173,7 @@ export const meetings = pgTable("meetings", {
   learningPath: text("learning_path"), // JSON string of recommended next steps
   suggestedVideos: text("suggested_videos"), // JSON string of [{title, url, thumbnail}]
   topics: text("topics"), // JSON string of ["Topic A", "Topic B"]
+  whiteboardSnapshot: text("whiteboard_snapshot"), // Base64 image snapshot of final whiteboard
   currentPrompt: text("current_prompt"), // Transient session-specific instructions
   isPublic: boolean("is_public").notNull().default(false),
   createdAt: timestamp("created_at")

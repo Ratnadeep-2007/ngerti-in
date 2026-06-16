@@ -105,12 +105,18 @@ ${whiteboardSummary}${kbContext}
 Note: The above whiteboard content and textbook excerpts are the latest information shared. Use this context to better understand the current discussion and provide more relevant, accurate responses based on the student's materials.
 `;
 
+  const updatePayload: any = {
+    currentPrompt: updatedPrompt,
+    updatedAt: new Date(),
+  };
+
+  if (imageBase64) {
+    updatePayload.whiteboardSnapshot = imageBase64;
+  }
+
   await db
     .update(meetings)
-    .set({
-      currentPrompt: updatedPrompt,
-      updatedAt: new Date(),
-    })
+    .set(updatePayload)
     .where(eq(meetings.id, meetingId));
 
   // 6. Suggest YouTube Videos (RAG-enhanced context)
@@ -137,19 +143,40 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
       Your system instructions/persona are:
       ${agent.prompt}
 
-      The student has just updated the whiteboard. Here is the latest whiteboard content and context:
+      The student has just updated the whiteboard. You are provided with the text content and the actual whiteboard image containing their drawings, diagrams, mathematical symbols, or formulas.
+      
+      Here is the textual whiteboard context:
       ${whiteboardSummary}
       
       Here is the textbook knowledge base context:
       ${kbContext}
 
-      Please analyze the whiteboard content, drawings, handwriting, and textbook excerpts. Provide a very brief, concise, and helpful explanation or check-in regarding what is on the board.
+      Please analyze the whiteboard image (especially any hand-drawn diagrams, flowcharts, scribbles, or math notation) and the textual context. Explain what you see, and provide a helpful, constructive check-in/explanation regarding the student's sketches.
       
       IMPORTANT: Keep your response short, highly conversational, and suitable for being read aloud via Text-to-Speech (concise sentences, no markdown lists or bullet formatting, maximum 3 sentences).
     `.trim();
 
     const explanationModel = genAI.getGenerativeModel({ model: "models/gemini-3.5-flash" });
-    const explanationResult = await explanationModel.generateContent(explanationPrompt);
+    
+    let explanationResult;
+    if (imageBase64) {
+      const pureBase64 = imageBase64.startsWith("data:")
+        ? imageBase64.split(",")[1]
+        : imageBase64;
+        
+      explanationResult = await explanationModel.generateContent([
+        explanationPrompt,
+        {
+          inlineData: {
+            data: pureBase64,
+            mimeType: "image/png"
+          }
+        }
+      ]);
+    } else {
+      explanationResult = await explanationModel.generateContent(explanationPrompt);
+    }
+    
     aiExplanationText = explanationResult.response.text();
   } catch (err) {
     console.error("Failed to generate whiteboard AI explanation:", err);
