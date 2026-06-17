@@ -12,6 +12,7 @@ interface Props {
   agentId: string;
   agentName: string;
   creatorId: string;
+  agentLanguage?: string;
 }
 
 export const CallProvider = ({
@@ -20,6 +21,7 @@ export const CallProvider = ({
   agentId,
   agentName,
   creatorId,
+  agentLanguage,
 }: Props) => {
   const { data, isPending } = authClient.useSession();
 
@@ -81,6 +83,7 @@ export const CallProvider = ({
           variant: "initials",
         })}
         creatorId={creatorId}
+        agentLanguage={agentLanguage}
       />
     </div>
   );

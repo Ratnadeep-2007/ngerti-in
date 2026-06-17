@@ -207,7 +207,7 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
         {
           inlineData: {
             data: pureBase64,
-            mimeType: "image/png"
+            mimeType: "image/jpeg"
           }
         }
       ]);

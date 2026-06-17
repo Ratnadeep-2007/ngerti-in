@@ -267,7 +267,8 @@ const ExcalidrawWrapper = ({
       const imageBlob = await exportToBlob({
         elements,
         appState,
-        mimeType: "image/png",
+        mimeType: "image/jpeg",
+        quality: 0.7,
         exportBackground: true,
         exportPadding: 20,
       });

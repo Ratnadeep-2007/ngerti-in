@@ -49,6 +49,7 @@ interface UseLiveTutorProps {
   hasMicPermission?: boolean;
   personality?: "socratic" | "eli5" | "coach";
   language?: string;
+  isLocalParticipantSpeaking?: boolean;
 }
 
 export const useLiveTutor = ({
@@ -59,6 +60,7 @@ export const useLiveTutor = ({
   hasMicPermission = false,
   personality,
   language,
+  isLocalParticipantSpeaking = false,
 }: UseLiveTutorProps) => {
   const trpc = useTRPC();
   const [isTutorEnabled, setIsTutorEnabled] = useState(false);
@@ -72,6 +74,14 @@ export const useLiveTutor = ({
   const recognitionRef = useRef<any>(null);
   const isSpeakingRef = useRef(false);
   const lastSpeakTimeRef = useRef<number>(0);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const latestInterimTranscriptRef = useRef<string>("");
+  const lastSentTextRef = useRef<string>("");
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const lastActiveAudioTimeRef = useRef<number>(0);
   
   // Stable refs for state to prevent recreation of SpeechRecognition
   const isTutorEnabledRef = useRef(false);
@@ -104,18 +114,18 @@ export const useLiveTutor = ({
   const startSpeechRecognition = useCallback(() => {
     if (!recognitionRef.current || isListeningRef.current) return;
     try {
-      isListeningRef.current = true;
       recognitionRef.current.start();
     } catch (err) {
       console.warn("SpeechRecognition start ignored:", err);
+      isListeningRef.current = false;
+      setIsListening(false);
     }
   }, []);
 
   // Safely stop speech recognition
   const stopSpeechRecognition = useCallback(() => {
-    if (!recognitionRef.current || !isListeningRef.current) return;
+    if (!recognitionRef.current) return;
     try {
-      isListeningRef.current = false;
       recognitionRef.current.stop();
     } catch (err) {
       console.warn("SpeechRecognition stop ignored:", err);
@@ -339,6 +349,91 @@ export const useLiveTutor = ({
     maybeRestartRef.current = maybeRestart;
   }, [maybeRestart]);
 
+  // Interrupt AI speaking if user starts speaking
+  useEffect(() => {
+    if (isLocalParticipantSpeaking && isSpeakingRef.current) {
+      console.log("[useLiveTutor] User started speaking. Interrupting AI speech synthesis.");
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      isSpeakingRef.current = false;
+      setIsSpeaking(false);
+
+      if (call) {
+        call.sendCustomEvent({
+          type: "ai-thinking",
+          payload: { active: false },
+        }).catch(err => {
+          console.error("[useLiveTutor] Failed to broadcast ai-thinking (inactive) custom event on interruption:", err);
+        });
+      }
+
+      // Start speech recognition immediately so we can capture the user's speech
+      startSpeechRecognition();
+    }
+  }, [isLocalParticipantSpeaking, call, startSpeechRecognition]);
+
+  const stopVolumeAnalyzer = useCallback(() => {
+    if (audioProcessorRef.current) {
+      try {
+        audioProcessorRef.current.disconnect();
+      } catch (e) {}
+      audioProcessorRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch (e) {}
+      audioContextRef.current = null;
+    }
+    if (audioStreamRef.current) {
+      try {
+        audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      } catch (e) {}
+      audioStreamRef.current = null;
+    }
+  }, []);
+
+  const startVolumeAnalyzer = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    try {
+      stopVolumeAnalyzer();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextClass();
+      audioContextRef.current = audioContext;
+
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(2048, 1, 1);
+      audioProcessorRef.current = processor;
+
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        let sum = 0;
+        for (let i = 0; i < inputData.length; i++) {
+          sum += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sum / inputData.length);
+        
+        // Threshold: 0.015 (1.5% of max volume)
+        const threshold = 0.015;
+        const aboveThreshold = rms > threshold;
+        
+        if (aboveThreshold) {
+          lastActiveAudioTimeRef.current = Date.now();
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+    } catch (err) {
+      console.warn("[useLiveTutor] Failed to start volume analyzer:", err);
+    }
+  }, [stopVolumeAnalyzer]);
+
   // Initialize browser Speech Recognition exactly once on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -356,8 +451,10 @@ export const useLiveTutor = ({
 
     rec.onstart = () => {
       setIsListening(true);
+      isListeningRef.current = true;
       setTranscript("");
       setInterimTranscript("");
+      lastSentTextRef.current = "";
     };
 
     // Immediately stop synthesis when user starts speaking (barge-in interruption)
@@ -395,13 +492,88 @@ export const useLiveTutor = ({
         }
       }
 
+      const timeSinceActiveAudio = Date.now() - lastActiveAudioTimeRef.current;
+      const isVoiceActive = timeSinceActiveAudio < 1500;
+
+      if (!isVoiceActive) {
+        // If we haven't detected voice above the threshold, ignore this interim transcript
+        setInterimTranscript("");
+        latestInterimTranscriptRef.current = "";
+        return;
+      }
+
+      // Clear any pending silence timer
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+        silenceTimeoutRef.current = null;
+      }
+
       if (interimTrans) {
         setInterimTranscript(interimTrans);
+        latestInterimTranscriptRef.current = interimTrans;
+
+        // Start a timer to manually finalize after 900ms of silence
+        silenceTimeoutRef.current = setTimeout(async () => {
+          const textToSend = latestInterimTranscriptRef.current.trim();
+          if (textToSend && !isSpeakingRef.current && !isThinkingRef.current) {
+            console.log(`[useLiveTutor] Silence detected. Manually finalising transcript: "${textToSend}"`);
+            
+            // Stop recognition immediately
+            if (recognitionRef.current) {
+              try {
+                recognitionRef.current.stop();
+              } catch (e) {}
+            }
+            setIsListening(false);
+            isListeningRef.current = false;
+            setInterimTranscript("");
+            latestInterimTranscriptRef.current = "";
+            lastSentTextRef.current = textToSend;
+
+            // Send to AI
+            const currentCall = callRef.current;
+            if (currentCall) {
+              currentCall.sendCustomEvent({
+                type: "user-speech",
+                payload: {
+                  text: textToSend,
+                  userName: currentCall.state.localParticipant?.name || "Student",
+                },
+              });
+              setLastSpeech({
+                speaker: currentCall.state.localParticipant?.name || "Student",
+                text: textToSend,
+              });
+              await handleSendToAIRef.current(textToSend);
+            }
+          }
+        }, 900);
       }
 
       if (finalTrans.trim()) {
+        const text = finalTrans.trim();
+        // Clear silence timeout since we got the final result
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+        
+        // Skip duplicate sending if we already manual-finalized it
+        if (
+          lastSentTextRef.current === text || 
+          lastSentTextRef.current.startsWith(text) || 
+          text.startsWith(lastSentTextRef.current)
+        ) {
+          console.log("[useLiveTutor] Ignoring duplicate final transcript:", text);
+          setInterimTranscript("");
+          latestInterimTranscriptRef.current = "";
+          return;
+        }
+
         setInterimTranscript("");
-        setTranscript(finalTrans);
+        latestInterimTranscriptRef.current = "";
+        lastSentTextRef.current = text;
+        setTranscript(text);
 
         // Final fallback to cancel speech when transcription result is parsed
         if (isSpeakingRef.current && window.speechSynthesis) {
@@ -415,15 +587,15 @@ export const useLiveTutor = ({
           currentCall.sendCustomEvent({
             type: "user-speech",
             payload: {
-              text: finalTrans,
+              text,
               userName: currentCall.state.localParticipant?.name || "Student",
             },
           });
           setLastSpeech({
             speaker: currentCall.state.localParticipant?.name || "Student",
-            text: finalTrans,
+            text,
           });
-          await handleSendToAIRef.current(finalTrans);
+          await handleSendToAIRef.current(text);
         }
       }
     };
@@ -434,17 +606,35 @@ export const useLiveTutor = ({
       if (errorType !== "aborted" && errorType !== "no-speech") {
         console.error("Speech recognition error:", errorType);
         
-        // Disable tutor on critical capture/permission errors to prevent loops
+        // Disable tutor on critical capture/permission/network errors to prevent loops
         if (
           errorType === "audio-capture" || 
           errorType === "not-allowed" || 
-          errorType === "service-not-allowed"
+          errorType === "service-not-allowed" ||
+          errorType === "network"
         ) {
-          toast.error(`Speech recognition failed: ${errorType === "audio-capture" ? "microphone already in use or disabled" : errorType}. Talk to AI disabled.`);
+          toast.error(
+            `Speech recognition failed: ${
+              errorType === "network"
+                ? "network connectivity issue"
+                : errorType === "audio-capture"
+                ? "microphone already in use or disabled"
+                : errorType
+            }. Talk to AI disabled.`
+          );
           setIsTutorEnabled(false);
           isTutorEnabledRef.current = false;
           setIsListening(false);
           isListeningRef.current = false;
+          stopSpeechRecognition();
+          stopVolumeAnalyzer();
+          if (typeof window !== "undefined" && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+          }
+          isSpeakingRef.current = false;
+          setIsSpeaking(false);
+          setIsThinking(false);
+          isThinkingRef.current = false;
           return;
         }
       }
@@ -467,6 +657,10 @@ export const useLiveTutor = ({
           recognitionRef.current.stop();
         } catch (err) {}
       }
+      if (silenceTimeoutRef.current) {
+        clearTimeout(silenceTimeoutRef.current);
+      }
+      stopVolumeAnalyzer();
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }
@@ -485,8 +679,12 @@ export const useLiveTutor = ({
 
     if (nextState) {
       startSpeechRecognition();
+      startVolumeAnalyzer();
     } else {
       stopSpeechRecognition();
+      stopVolumeAnalyzer();
+      setIsListening(false);
+      isListeningRef.current = false;
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel();
       }

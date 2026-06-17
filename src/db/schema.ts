@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, pgEnum, customType } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, pgEnum, customType, index } from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
 import { use } from "react";
 
@@ -142,7 +142,9 @@ export const knowledgeBase = pgTable("knowledge_base", {
   updatedAt: timestamp("updated_at").$defaultFn(
     () => /* @__PURE__ */ new Date(),
   ),
-});
+}, (table) => [
+  index("idx_kb_agent_id").on(table.agentId),
+]);
 
 export const meetingStatus = pgEnum("meeting_status", [
   "upcoming",
@@ -182,4 +184,8 @@ export const meetings = pgTable("meetings", {
   updatedAt: timestamp("updated_at").$defaultFn(
     () => /* @__PURE__ */ new Date(),
   ),
-});
+}, (table) => [
+  index("idx_meetings_user_id").on(table.userId),
+  index("idx_meetings_agent_id").on(table.agentId),
+  index("idx_meetings_status").on(table.status),
+]);

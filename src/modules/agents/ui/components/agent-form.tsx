@@ -204,6 +204,7 @@ export const AgentForm = ({
                   </FormControl>
                   <SelectContent>
                     <SelectItem value="Standard">Standard (Formal)</SelectItem>
+                    <SelectItem value="English">English</SelectItem>
                     <SelectItem value="Javanese">Javanese Dialect</SelectItem>
                     <SelectItem value="Sundanese">Sundanese Dialect</SelectItem>
                     <SelectItem value="Slang">Youth Slang (Bahasa Gaul)</SelectItem>

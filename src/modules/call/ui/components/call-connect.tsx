@@ -22,6 +22,7 @@ interface Props {
   userName: string;
   userImage: string;
   creatorId: string;
+  agentLanguage?: string;
 }
 
 export const CallConnect = ({
@@ -33,6 +34,7 @@ export const CallConnect = ({
   userName,
   userImage,
   creatorId,
+  agentLanguage,
 }: Props) => {
   const trpc = useTRPC();
 
@@ -135,6 +137,7 @@ export const CallConnect = ({
             agentName={agentName}
             creatorId={creatorId}
             userId={userId}
+            agentLanguage={agentLanguage}
           />
         </StreamCall>
       </StreamVideo>

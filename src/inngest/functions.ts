@@ -73,7 +73,8 @@ const summarizerSystemPrompt = `
 const meetingsProcessing = inngest.createFunction(
   { id: "meetings/processing", triggers: [{ event: "meetings/processing" }] },
   async ({ event, step }) => {
-    const { transcriptUrl, meeting_id } = event.data;
+    const transcriptUrl = event.data.transcriptUrl || event.data.transcript_url;
+    const { meeting_id } = event.data;
     if (!transcriptUrl) {
       console.error(`[Inngest meetingsProcessing] Failed: Missing transcriptUrl for meeting ${meeting_id}`);
       throw new Error("Missing transcript_url");
@@ -83,8 +84,40 @@ const meetingsProcessing = inngest.createFunction(
     const transcript = await step.run("fetch-and-parse-transcript", async () => {
       console.log(`[Inngest meetingsProcessing] Fetching transcript from ${transcriptUrl} for meeting ${meeting_id}`);
       try {
-        const res = await fetch(transcriptUrl);
-        if (!res.ok) throw new Error(`Fetch failed with status ${res.status}`);
+        let urlToFetch = transcriptUrl;
+        let res = await fetch(urlToFetch);
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.warn(`[Inngest meetingsProcessing] Transcript file is permanently gone (404) for meeting ${meeting_id}. Gracefully falling back to empty transcript.`);
+            return [];
+          }
+          console.warn(`[Inngest meetingsProcessing] Fetch failed with status ${res.status}. Attempting to refresh transcript URL from Stream Video.`);
+          try {
+            const transcriptionsRes = await streamVideo.video.listTranscriptions({ type: "default", id: meeting_id });
+            if (transcriptionsRes?.transcriptions && transcriptionsRes.transcriptions.length > 0) {
+              const freshUrl = transcriptionsRes.transcriptions[0].url;
+              console.log(`[Inngest meetingsProcessing] Found fresh transcript URL. Retrying fetch.`);
+              res = await fetch(freshUrl);
+              if (!res.ok) {
+                if (res.status === 404) {
+                  console.warn(`[Inngest meetingsProcessing] Refreshed transcript file is permanently gone (404) for meeting ${meeting_id}. Gracefully falling back to empty transcript.`);
+                  return [];
+                }
+                throw new Error(`Fetch with fresh URL failed with status ${res.status}`);
+              }
+              
+              // Update the database with the fresh URL so we don't use the expired one next time
+              await db.update(meetings)
+                .set({ transcriptUrl: freshUrl })
+                .where(eq(meetings.id, meeting_id));
+            } else {
+              throw new Error(`Original fetch failed (${res.status}) and no transcription found on Stream Video`);
+            }
+          } catch (refreshErr) {
+            console.error(`[Inngest meetingsProcessing] Failed to refresh transcript URL from Stream Video:`, refreshErr);
+            throw new Error(`Fetch failed with status ${res.status} and refresh failed: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`);
+          }
+        }
         const text = await res.text();
         const parsed = JSONL.parse<StreamTranscriptItem>(text);
         console.log(`[Inngest meetingsProcessing] Successfully parsed ${parsed.length} transcript lines`);

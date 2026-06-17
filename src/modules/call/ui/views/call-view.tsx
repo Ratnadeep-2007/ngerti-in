@@ -34,6 +34,7 @@ export const CallView = ({ meetingId }: Props) => {
       agentId={data.agent.id}
       agentName={data.agent.name}
       creatorId={data.userId}
+      agentLanguage={data.agent.language}
     />
   );
 };

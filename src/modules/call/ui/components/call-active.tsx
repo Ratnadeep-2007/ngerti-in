@@ -188,6 +188,7 @@ interface CallActiveProps {
   meetingId: string;
   creatorId: string;
   userId: string;
+  agentLanguage?: string;
 }
 
 export const CallActive = ({
@@ -199,6 +200,7 @@ export const CallActive = ({
   meetingId,
   creatorId,
   userId,
+  agentLanguage,
 }: CallActiveProps) => {
   const call = useCall();
   const trpc = useTRPC();
@@ -214,7 +216,13 @@ export const CallActive = ({
   const isOwner = userId === creatorId;
   const [showChat, setShowChat] = useState(false);
   const [personality, setPersonality] = useState<"socratic" | "eli5" | "coach">("socratic");
-  const [language, setLanguage] = useState<string>("en-US");
+  const [language, setLanguage] = useState<string>(() => {
+    if (agentLanguage === "English") return "en-US";
+    if (agentLanguage === "Standard" || agentLanguage === "Javanese" || agentLanguage === "Sundanese" || agentLanguage === "Slang") {
+      return "id-ID";
+    }
+    return "en-US";
+  });
 
   const { useMicrophoneState, useCameraState, useLocalParticipant } = useCallStateHooks();
   const { microphone, isMute: isMicMute, hasBrowserPermission: hasMicPermission } = useMicrophoneState();
@@ -237,6 +245,7 @@ export const CallActive = ({
     hasMicPermission,
     personality,
     language,
+    isLocalParticipantSpeaking: !!localParticipant?.isSpeaking,
   });
 
   const handleConfused = useCallback(

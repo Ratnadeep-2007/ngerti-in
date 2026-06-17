@@ -31,12 +31,14 @@ export const CallUI = ({
   agentName,
   creatorId,
   userId,
+  agentLanguage,
 }: {
   meetingName: string;
   agentId: string;
   agentName: string;
   creatorId: string;
   userId: string;
+  agentLanguage?: string;
 }) => {
   const call = useCall();
   const { useCallCallingState } = useCallStateHooks();
@@ -129,6 +131,7 @@ export const CallUI = ({
               meetingId={call?.id || ""}
               creatorId={creatorId}
               userId={userId}
+              agentLanguage={agentLanguage}
             />
           </div>
 

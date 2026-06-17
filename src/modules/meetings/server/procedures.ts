@@ -35,7 +35,7 @@ import { languages } from "humanize-duration";
 import JSONL from "jsonl-parse-stringify";
 import { user } from "@/db/schema";
 import { streamChat } from "@/lib/stream-chat";
-import { generateNvidiaResponse } from "@/lib/nvidia";
+import { getGeminiModel } from "@/lib/gemini";
 
 export const meetingsRouter = createTRPCRouter({
   generateChatToken: protectedProcedure.mutation(async ({ ctx }) => {
@@ -316,6 +316,20 @@ export const meetingsRouter = createTRPCRouter({
           }
         } catch (e) {
           console.error("Failed to query recordings/transcriptions from Stream:", e);
+        }
+      } else if (existingMeeting.status === "processing" && finalTranscriptUrl) {
+        // Fallback: If the meeting is stuck in 'processing' but we already have the transcript url,
+        // trigger Inngest processing again.
+        try {
+          await inngest.send({
+            name: "meetings/processing",
+            data: {
+              meeting_id: input.id,
+              transcript_url: finalTranscriptUrl,
+            },
+          });
+        } catch (e) {
+          console.error("Failed to re-trigger Inngest processing:", e);
         }
       }
 
@@ -718,6 +732,7 @@ export const meetingsRouter = createTRPCRouter({
       }
       
       let languageInstruction = "";
+      let langName = "English";
       if (language) {
         const langMap: Record<string, string> = {
           "en-US": "English",
@@ -725,7 +740,7 @@ export const meetingsRouter = createTRPCRouter({
           "es-ES": "Spanish",
           "hi-IN": "Hindi",
         };
-        const langName = langMap[language] || "English";
+        langName = langMap[language] || "English";
         languageInstruction = `
           CRITICAL MULTILINGUAL INSTRUCTION:
           You MUST conduct the tutoring session and respond in the following language: ${langName} (${language}).
@@ -788,28 +803,23 @@ export const meetingsRouter = createTRPCRouter({
         You are responding to a student's voice/text question. Keep your answers brief and readable, as they will be spoken out loud via text-to-speech.
       `.trim();
 
-      const formattedMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
-        { role: "system", content: systemInstruction },
-        ...history.map((h: any) => ({
-          role: h.role === "model" ? ("assistant" as const) : ("user" as const),
-          content: h.parts[0].text,
-        })),
-        { role: "user" as const, content: text },
-      ];      
-      
       let aiResponse = "";
       try {
-        const response = await generateNvidiaResponse(formattedMessages);
-        if (!response) {
-          throw new Error("generateNvidiaResponse returned empty or falsy response");
-        }
-        aiResponse = response;
-      } catch (nvidiaErr) {
-        console.error(`[TRPC talkToAgent] NVIDIA NIM API invocation failure for meeting ${meetingId}:`, nvidiaErr);
+        const model = getGeminiModel("models/gemini-3.5-flash", {
+          systemInstruction,
+        });
+        const chat = model.startChat({
+          history,
+        });
+        const promptWithLang = `${text}\n\n(IMPORTANT: Remember to reply and explain strictly in ${langName})`;
+        const result = await chat.sendMessage(promptWithLang);
+        aiResponse = result.response.text();
+      } catch (geminiErr) {
+        console.error(`[TRPC talkToAgent] Gemini API invocation failure for meeting ${meetingId}:`, geminiErr);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "No response from NVIDIA NIM",
-          cause: nvidiaErr,
+          message: "No response from Gemini API",
+          cause: geminiErr,
         });
       }
 
@@ -929,20 +939,29 @@ export const meetingsRouter = createTRPCRouter({
         Answer the user's questions clearly, accurately, and in accordance with your tutor persona. Use markdown formatting where appropriate.
       `.trim();
 
-      const formattedMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
-        { role: "system", content: systemInstruction },
-        ...messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-        })),
-      ];
+      // Convert history to Gemini format (mapping "assistant" to "model")
+      const lastMessage = messages[messages.length - 1];
+      const chatHistory = messages.slice(0, -1).map((m) => ({
+        role: m.role === "assistant" ? ("model" as const) : ("user" as const),
+        parts: [{ text: m.content }],
+      }));
 
-      const aiResponse = await generateNvidiaResponse(formattedMessages);
-
-      if (!aiResponse) {
+      let aiResponse = "";
+      try {
+        const model = getGeminiModel("models/gemini-3.5-flash", {
+          systemInstruction,
+        });
+        const chat = model.startChat({
+          history: chatHistory,
+        });
+        const result = await chat.sendMessage(lastMessage.content);
+        aiResponse = result.response.text();
+      } catch (geminiErr) {
+        console.error(`[TRPC askAi] Gemini API invocation failure for meeting ${meetingId}:`, geminiErr);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "No response from NVIDIA NIM",
+          message: "No response from Gemini API",
+          cause: geminiErr,
         });
       }
 

@@ -188,11 +188,14 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
         doc.line(margin, y + 2, pageWidth - margin, y + 2);
         y += 10;
 
+        const isJpeg = data.whiteboardSnapshot.startsWith("/9j/") || data.whiteboardSnapshot.includes("jpeg");
+        const format = isJpeg ? "JPEG" : "PNG";
+        const mime = isJpeg ? "image/jpeg" : "image/png";
         const imgData = data.whiteboardSnapshot.startsWith("data:")
           ? data.whiteboardSnapshot
-          : `data:image/png;base64,${data.whiteboardSnapshot}`;
+          : `data:${mime};base64,${data.whiteboardSnapshot}`;
 
-        doc.addImage(imgData, "PNG", margin, y, contentWidth, 95);
+        doc.addImage(imgData, format, margin, y, contentWidth, 95);
         y += 105;
       }
 
@@ -333,41 +336,49 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                 <FileVideoIcon className="size-6" />
                 <h2>Suggested Videos</h2>
               </div>
-              <p className="text-muted-foreground">
-                Hand-picked educational videos to help you understand these
-                concepts better:
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-2">
-                {suggestedVideos?.map((video: any, i: number) => (
-                  <Link
-                    key={i}
-                    href={video.url}
-                    target="_blank"
-                    className="group flex flex-col gap-3 p-3 rounded-2xl border bg-gray-50/50 hover:bg-white hover:shadow-xl hover:border-red-200 transition-all duration-300"
-                  >
-                    <div className="relative aspect-video overflow-hidden rounded-xl border">
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors flex items-center justify-center">
-                        <div className="size-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
-                          <FileVideoIcon className="size-6 fill-current" />
+              {!suggestedVideos || suggestedVideos.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No suggested videos available for this session.
+                </p>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">
+                    Hand-picked educational videos to help you understand these
+                    concepts better:
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-2">
+                    {suggestedVideos.map((video: any, i: number) => (
+                      <Link
+                        key={i}
+                        href={video.url}
+                        target="_blank"
+                        className="group flex flex-col gap-3 p-3 rounded-2xl border bg-gray-50/50 hover:bg-white hover:shadow-xl hover:border-red-200 transition-all duration-300"
+                      >
+                        <div className="relative aspect-video overflow-hidden rounded-xl border">
+                          <img
+                            src={video.thumbnail}
+                            alt={video.title}
+                            className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors flex items-center justify-center">
+                            <div className="size-12 rounded-full bg-red-600 text-white flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
+                              <FileVideoIcon className="size-6 fill-current" />
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900 leading-tight line-clamp-2 group-hover:text-red-700 transition-colors">
-                        {video.title}
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                        View on YouTube
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+                        <div>
+                          <h3 className="font-bold text-gray-900 leading-tight line-clamp-2 group-hover:text-red-700 transition-colors">
+                            {video.title}
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                            View on YouTube
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="path">
@@ -376,30 +387,38 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                 <MapIcon className="size-6" />
                 <h2>Personalized Learning Path</h2>
               </div>
-              <p className="text-muted-foreground">
-                Based on your session, here are the recommended next steps to
-                master this topic:
-              </p>
-              <div className="grid gap-4 mt-2">
-                {learningPath?.map((step: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex gap-4 p-4 rounded-xl border bg-emerald-50/30 border-emerald-100 hover:border-emerald-200 transition-colors"
-                  >
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
-                      {i + 1}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-emerald-900">
-                        {step.title}
-                      </h3>
-                      <p className="text-emerald-800/70 text-sm">
-                        {step.description}
-                      </p>
-                    </div>
+              {!learningPath || learningPath.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No personalized learning path available for this session.
+                </p>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">
+                    Based on your session, here are the recommended next steps to
+                    master this topic:
+                  </p>
+                  <div className="grid gap-4 mt-2">
+                    {learningPath.map((step: any, i: number) => (
+                      <div
+                        key={i}
+                        className="flex gap-4 p-4 rounded-xl border bg-emerald-50/30 border-emerald-100 hover:border-emerald-200 transition-colors"
+                      >
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold">
+                          {i + 1}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-emerald-900">
+                            {step.title}
+                          </h3>
+                          <p className="text-emerald-800/70 text-sm">
+                            {step.description}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
             </div>
           </TabsContent>
           <TabsContent value="quiz">
@@ -435,7 +454,7 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {quiz && (
+                  {quiz && quiz.length > 0 && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -449,7 +468,7 @@ export const CompletedState = ({ data }: CompletedStateProps) => {
                 </div>
               </div>
 
-              {!quiz ? (
+              {!quiz || quiz.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">
                   No quiz/flashcards available for this session.
                 </div>
