@@ -95,7 +95,10 @@ export const useDeepgramAgent = ({
         }
       );
 
-      if (!response.ok) throw new Error("Failed to generate TTS");
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`Failed to generate TTS: ${response.status} ${response.statusText} ${errText}`);
+      }
 
       const arrayBuffer = await response.arrayBuffer();
       if (!audioContextRef.current) {
@@ -129,15 +132,29 @@ export const useDeepgramAgent = ({
         body: JSON.stringify({ transcript, meetingId, agentId }),
       });
 
-      if (!response.ok) throw new Error("Failed to get AI response");
+      if (!response.ok) {
+        let errorMsg = "Failed to get AI response";
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errorMsg = errData.error;
+          }
+        } catch (_) {
+          try {
+            const txt = await response.text();
+            if (txt) errorMsg = txt;
+          } catch (_) {}
+        }
+        throw new Error(errorMsg);
+      }
 
       const data = await response.json();
       if (data.response) {
         await processAIResponse(data.response);
       }
-    } catch (err) {
-      console.error("Gemini Error:", err);
-      toast.error("AI failed to respond.");
+    } catch (err: any) {
+      console.error("Gemini Error:", err?.message || err);
+      toast.error(`AI failed to respond: ${err?.message || "Unknown error"}`);
     } finally {
       setIsAgentThinking(false);
     }
