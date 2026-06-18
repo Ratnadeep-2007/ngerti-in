@@ -26,6 +26,7 @@ export const useDeepgramAgent = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const deepgramSocketRef = useRef<WebSocket | null>(null);
+  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const audioQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
 
@@ -144,52 +145,76 @@ export const useDeepgramAgent = ({
 
   const initDeepgram = useCallback(async () => {
     const currentId = ++connectionIdRef.current;
+    console.log(`[useDeepgramAgent] Initializing Deepgram Agent for meeting ${meetingId}. Connection ID: ${currentId}`);
     
     try {
       mediaStreamRef.current = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
+      console.log("[useDeepgramAgent] Microphone access granted successfully.");
 
       if (connectionIdRef.current !== currentId) return;
 
       const apiKey = await getDeepgramKey();
+      console.log("[useDeepgramAgent] Deepgram API key successfully retrieved.");
       
       if (connectionIdRef.current !== currentId) return;
 
       // --- 1. Agent Participant Setup ---
       if (agentId) {
-        const agentToken = await generateAgentToken({ agentId });
-        const streamApiKey = process.env.NEXT_PUBLIC_STREAM_VIDEO_API_KEY!;
-        const client = new StreamVideoClient({
-          apiKey: streamApiKey,
-          user: { id: agentId, name: "AI Tutor" },
-          tokenProvider: () => Promise.resolve(agentToken),
-        });
-        agentClientRef.current = client;
+        try {
+          console.log(`[useDeepgramAgent] Spawning virtual participant for AI Agent: ${agentId}`);
+          const agentToken = await generateAgentToken({ agentId });
+          const streamApiKey = process.env.NEXT_PUBLIC_STREAM_VIDEO_API_KEY!;
+          const client = new StreamVideoClient({
+            apiKey: streamApiKey,
+            user: { id: agentId, name: "AI Tutor" },
+            tokenProvider: () => Promise.resolve(agentToken),
+          });
+          agentClientRef.current = client;
 
-        const call = client.call("default", meetingId);
-        agentCallRef.current = call;
-        call.camera.disable(); // Prevent hardware camera
-        // DO NOT disable microphone here, otherwise Stream backend hard-mutes the participant 
-        // overriding our custom audio stream.
-        await call.join({ create: true });
+          const call = client.call("default", meetingId);
+          agentCallRef.current = call;
+          call.camera.disable(); // Prevent hardware camera
+          // DO NOT disable microphone here, otherwise Stream backend hard-mutes the participant 
+          // overriding our custom audio stream.
+          await call.join({ create: true });
+          console.log("[useDeepgramAgent] Virtual AI Tutor participant joined Stream call.");
 
-        // Set up the virtual microphone for the agent to broadcast TTS
-        audioContextRef.current = new window.AudioContext();
-        agentAudioDestinationRef.current = audioContextRef.current.createMediaStreamDestination();
-        await call.publishAudioStream(agentAudioDestinationRef.current.stream);
+          // Set up the virtual microphone for the agent to broadcast TTS
+          audioContextRef.current = new window.AudioContext();
+          agentAudioDestinationRef.current = audioContextRef.current.createMediaStreamDestination();
+          await call.publishAudioStream(agentAudioDestinationRef.current.stream);
+          console.log("[useDeepgramAgent] Virtual mic published to Stream call successfully.");
+        } catch (agentJoinErr) {
+          console.error("[useDeepgramAgent] Warning: Failed to spawn virtual participant (AI will still listen locally):", agentJoinErr);
+          if (!audioContextRef.current) {
+            audioContextRef.current = new window.AudioContext();
+          }
+        }
       } else if (!audioContextRef.current) {
         audioContextRef.current = new window.AudioContext();
       }
       // --------------------------------
 
+      const sampleRate = audioContextRef.current?.sampleRate || 48000;
+      console.log(`[useDeepgramAgent] Connecting to Deepgram WebSocket. Sample Rate: ${sampleRate}`);
       deepgramSocketRef.current = new WebSocket(
-        "wss://api.deepgram.com/v1/listen?endpointing=500&smart_format=true",
+        `wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=${sampleRate}&endpointing=300&smart_format=true`,
         ["token", apiKey]
       );
 
-      deepgramSocketRef.current.onopen = () => {
+      deepgramSocketRef.current.onopen = async () => {
+        console.log("[useDeepgramAgent] Deepgram WebSocket connection opened successfully.");
         if (!audioContextRef.current) return;
+
+        // Resume AudioContext if suspended (browser security autoplay policies)
+        if (audioContextRef.current.state === "suspended") {
+          console.log("[useDeepgramAgent] AudioContext is suspended. Resuming now...");
+          await audioContextRef.current.resume();
+          console.log(`[useDeepgramAgent] AudioContext state is now: ${audioContextRef.current.state}`);
+        }
+
         const source = audioContextRef.current.createMediaStreamSource(
           mediaStreamRef.current!
         );
@@ -198,6 +223,7 @@ export const useDeepgramAgent = ({
           1,
           1
         );
+        audioProcessorRef.current = processor; // Store reference to prevent garbage collection
 
         // Create a gain node with 0 volume to prevent local mic echo
         const gainNode = audioContextRef.current.createGain();
@@ -206,7 +232,9 @@ export const useDeepgramAgent = ({
         source.connect(processor);
         processor.connect(gainNode);
         gainNode.connect(audioContextRef.current.destination);
+        console.log("[useDeepgramAgent] Audio context graph connected. Recording started.");
 
+        let chunkCount = 0;
         processor.onaudioprocess = (e) => {
           if (
             deepgramSocketRef.current &&
@@ -218,6 +246,13 @@ export const useDeepgramAgent = ({
               buffer[i] = inputData[i] * 32767;
             }
             deepgramSocketRef.current.send(buffer.buffer);
+
+            chunkCount++;
+            if (chunkCount === 1) {
+              console.log("[useDeepgramAgent] First microphone audio chunk sent to Deepgram.");
+            } else if (chunkCount % 100 === 0) {
+              console.log(`[useDeepgramAgent] Streaming in progress: Sent ${chunkCount} audio chunks to Deepgram.`);
+            }
           }
         };
       };
@@ -226,6 +261,10 @@ export const useDeepgramAgent = ({
         const received = JSON.parse(message.data);
         const transcript = received.channel?.alternatives[0]?.transcript;
 
+        if (transcript) {
+          console.log(`[useDeepgramAgent] Speech segment: "${transcript}" (is_final: ${received.is_final})`);
+        }
+
         if (transcript && received.is_final) {
           accumulatedTranscriptRef.current += transcript + " ";
 
@@ -233,21 +272,26 @@ export const useDeepgramAgent = ({
             clearTimeout(transcriptTimeoutRef.current);
           }
 
-          // If user pauses speaking for 1.5 seconds, send it to Gemini
+          // If user pauses speaking for 0.8 seconds, send it to Gemini
           transcriptTimeoutRef.current = setTimeout(() => {
             if (accumulatedTranscriptRef.current.trim()) {
+              console.log(`[useDeepgramAgent] Silence timeout reached. Submitting: "${accumulatedTranscriptRef.current.trim()}"`);
               submitToGemini(accumulatedTranscriptRef.current);
               accumulatedTranscriptRef.current = "";
             }
-          }, 1500);
+          }, 800);
         }
       };
 
       deepgramSocketRef.current.onerror = (error) => {
-        console.error("Deepgram Socket Error", error);
+        console.error("[useDeepgramAgent] Deepgram Socket Error:", error);
+      };
+
+      deepgramSocketRef.current.onclose = (event) => {
+        console.warn(`[useDeepgramAgent] Deepgram Socket Closed. Code: ${event.code}, Reason: ${event.reason || "None"}`);
       };
     } catch (err) {
-      console.error("Failed to initialize Deepgram Agent:", err);
+      console.error("[useDeepgramAgent] Failed to initialize Deepgram Agent:", err);
     }
   }, [meetingId, agentId]);
 
@@ -271,6 +315,12 @@ export const useDeepgramAgent = ({
     }
     if (deepgramSocketRef.current) {
       deepgramSocketRef.current.close();
+    }
+    if (audioProcessorRef.current) {
+      try {
+        audioProcessorRef.current.disconnect();
+      } catch (e) {}
+      audioProcessorRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close();

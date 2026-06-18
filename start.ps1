@@ -66,8 +66,10 @@ if (Test-Path $envPath) {
 }
 
 # 4. Update Stream Webhook
+Write-Host "Waiting 5 seconds for Cloudflare DNS to propagate..." -ForegroundColor Cyan
+Start-Sleep -Seconds 5
 Write-Host "Updating Stream Webhook URL..." -ForegroundColor Cyan
-npx tsx update_stream_webhook.ts "$URL/api/webhook"
+npx.cmd tsx update_stream_webhook.ts "$URL/api/webhook"
 
 # 5. Start Inngest Background Worker
 Write-Host "Starting Inngest..." -ForegroundColor Cyan
@@ -75,4 +77,4 @@ Start-Process npm.cmd -ArgumentList "run dev:inngest" -NoNewWindow
 
 # 6. Start Next.js Development Server
 Write-Host "Starting Next.js..." -ForegroundColor Cyan
-npm run dev
+npm.cmd run dev

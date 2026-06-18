@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
         ? imageBase64.split(",")[1]
         : imageBase64;
 
-      const model = genAI.getGenerativeModel({ model: "models/gemini-3.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
       const result = await model.generateContent([
         "Extract and transcribe all text visible in this whiteboard image. Only return the text content, no explanations:",
         {
@@ -194,7 +194,7 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
       IMPORTANT: Keep your response short, highly conversational, and suitable for being read aloud via Text-to-Speech (concise sentences, no markdown lists or bullet formatting, maximum 3 sentences).
     `.trim();
 
-    const explanationModel = genAI.getGenerativeModel({ model: "models/gemini-3.5-flash" });
+    const explanationModel = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
     
     let explanationResult;
     if (imageBase64) {

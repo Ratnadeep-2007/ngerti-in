@@ -5,6 +5,7 @@ import {
   useCallStateHooks,
   useCall,
   ParticipantView,
+  ParticipantsAudio,
 } from "@stream-io/video-react-sdk";
 import {
   Mic,
@@ -31,7 +32,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEmotionDetection } from "../../hooks/use-emotion-detection";
 import { useRouter } from "next/navigation";
-import { useLiveTutor } from "../../hooks/use-live-tutor";
+import { useDeepgramAgent } from "../../hooks/use-deepgram-agent";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -224,29 +225,33 @@ export const CallActive = ({
     return "en-US";
   });
 
-  const { useMicrophoneState, useCameraState, useLocalParticipant } = useCallStateHooks();
+  const { useMicrophoneState, useCameraState, useLocalParticipant, useParticipants } = useCallStateHooks();
   const { microphone, isMute: isMicMute, hasBrowserPermission: hasMicPermission } = useMicrophoneState();
   const { camera, isMute: isCameraMute } = useCameraState();
   const localParticipant = useLocalParticipant();
+  const participants = useParticipants();
 
-  const {
-    isTutorEnabled,
-    isListening,
-    isThinking,
-    isSpeaking,
-    interimTranscript,
-    lastSpeech,
-    toggleTutor,
-  } = useLiveTutor({
+  const [isTutorEnabled, setIsTutorEnabled] = useState(false);
+  const toggleTutor = () => setIsTutorEnabled((prev) => !prev);
+
+  const { captions, isAgentThinking } = useDeepgramAgent({
     meetingId,
     agentId: agentId || "",
-    agentName: agentName || "AI Tutor",
-    call: call || undefined,
-    hasMicPermission,
-    personality,
-    language,
-    isLocalParticipantSpeaking: !!localParticipant?.isSpeaking,
+    enabled: isTutorEnabled,
   });
+
+  const isListening = isTutorEnabled && !isAgentThinking;
+  const isThinking = isAgentThinking;
+  const isSpeaking = false;
+  const interimTranscript = "";
+
+  const lastCaption = captions[captions.length - 1];
+  const lastSpeech = lastCaption
+    ? {
+        speaker: lastCaption.speaker === "You" ? "Student" : (agentName || "AI Tutor"),
+        text: lastCaption.text,
+      }
+    : null;
 
   const handleConfused = useCallback(
     async (source: "manual" | "proactive" = "manual") => {
@@ -360,6 +365,7 @@ export const CallActive = ({
 
   return (
     <div className="flex h-full text-white relative overflow-hidden">
+      <ParticipantsAudio participants={participants} />
       <div className={`flex flex-col justify-between p-4 flex-1 transition-all duration-300 ${showChat ? 'mr-[350px]' : ''}`}>
         {/* Hidden Video for Emotion Detection */}
         <video
@@ -436,7 +442,7 @@ export const CallActive = ({
 
         {/* AI Tutor Overlay widgets */}
         <div className="flex flex-col gap-2 z-10 w-full max-w-xl mx-auto absolute bottom-28 left-1/2 -translate-x-1/2 px-4 pointer-events-none">
-          {!isTutorEnabled && isListening && (
+          {isTutorEnabled && isListening && (
             <div className="flex items-center gap-3 px-4 py-2 bg-red-600/35 border border-red-500/45 backdrop-blur-md rounded-full shadow-lg text-sm text-red-100 w-fit mx-auto animate-pulse">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -446,14 +452,14 @@ export const CallActive = ({
             </div>
           )}
 
-          {!isTutorEnabled && isThinking && (
+          {isTutorEnabled && isThinking && (
             <div className="flex items-center gap-3 px-4 py-2 bg-purple-600/35 border border-purple-500/45 backdrop-blur-md rounded-full shadow-lg text-sm text-purple-100 w-fit mx-auto">
               <Loader2Icon className="size-4 animate-spin text-purple-400" />
               <span className="font-semibold tracking-wide">{agentName || "AI Tutor"} is thinking...</span>
             </div>
           )}
 
-          {lastSpeech && (!isTutorEnabled || lastSpeech.speaker !== agentName) && (
+          {lastSpeech && (
             <div className="text-center px-6 py-2.5 bg-black/85 border border-white/10 backdrop-blur-md rounded-2xl shadow-xl max-h-24 overflow-y-auto pointer-events-auto">
               <p className="text-xs font-semibold text-purple-400 tracking-widest uppercase mb-1">{lastSpeech.speaker}</p>
               <p className="text-sm font-medium text-white/95 leading-relaxed">{lastSpeech.text}</p>
