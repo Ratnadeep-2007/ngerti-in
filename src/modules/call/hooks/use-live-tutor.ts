@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Call } from "@stream-io/video-react-sdk";
 import confetti from "canvas-confetti";
+import { getDeepgramKey } from "../actions/get-deepgram-key";
 
 const extractAndStripDrawing = (text: string) => {
   const excalidrawRegex = /```excalidraw\n([\s\S]*?)\n```/;
@@ -24,22 +25,43 @@ const extractAndStripDrawing = (text: string) => {
 };
 
 const checkPraiseAndTriggerConfetti = (text: string) => {
-  const praiseKeywords = ["correct", "great job", "spot on", "awesome", "perfect", "excellent", "well done", "amazing", "wonderful", "fantastic", "spot-on"];
+  const praiseKeywords = [
+    "correct",
+    "great job",
+    "spot on",
+    "awesome",
+    "perfect",
+    "excellent",
+    "well done",
+    "amazing",
+    "wonderful",
+    "fantastic",
+    "spot-on",
+  ];
   const lowerText = text.toLowerCase();
-  const hasPraise = praiseKeywords.some(keyword => lowerText.includes(keyword));
-  
+  const hasPraise = praiseKeywords.some((keyword) => lowerText.includes(keyword));
+
   if (hasPraise) {
     try {
       confetti({
         particleCount: 80,
         spread: 60,
-        origin: { y: 0.5 }
+        origin: { y: 0.5 },
       });
     } catch (err) {
       console.error("Failed to run confetti:", err);
     }
   }
 };
+
+const resolveDeepgramLanguage = (language?: string) => {
+  if (!language) return undefined;
+  if (language.startsWith("hi")) return "hi";
+  if (language.startsWith("en")) return "en";
+  return undefined;
+};
+
+const resolveDeepgramTtsModel = (_language?: string) => "aura-2-thalia-en";
 
 interface UseLiveTutorProps {
   meetingId: string;
@@ -70,25 +92,31 @@ export const useLiveTutor = ({
   const [transcript, setTranscript] = useState("");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [lastSpeech, setLastSpeech] = useState<{ speaker: string; text: string } | null>(null);
-  
-  const recognitionRef = useRef<any>(null);
+
+  const [isHoldToTalkActive, setIsHoldToTalkActive] = useState(false);
+
+  const deepgramSocketRef = useRef<WebSocket | null>(null);
+  const captureStreamRef = useRef<MediaStream | null>(null);
+  const captureAudioContextRef = useRef<AudioContext | null>(null);
+  const captureProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const captureSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const captureGainRef = useRef<GainNode | null>(null);
+  const ttsAudioContextRef = useRef<AudioContext | null>(null);
+  const ttsSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const finalizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingFinalizeRef = useRef(false);
+  const transcriptBufferRef = useRef("");
+  const latestInterimTranscriptRef = useRef("");
+  const lastSentTextRef = useRef("");
+
   const isSpeakingRef = useRef(false);
-  const lastSpeakTimeRef = useRef<number>(0);
-  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const latestInterimTranscriptRef = useRef<string>("");
-  const lastSentTextRef = useRef<string>("");
-  
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioStreamRef = useRef<MediaStream | null>(null);
-  const audioProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const lastActiveAudioTimeRef = useRef<number>(0);
-  
-  // Stable refs for state to prevent recreation of SpeechRecognition
-  const isTutorEnabledRef = useRef(false);
   const isListeningRef = useRef(false);
   const isThinkingRef = useRef(false);
+  const isTutorEnabledRef = useRef(false);
   const personalityRef = useRef(personality);
   const languageRef = useRef(language || "en-US");
+  const callRef = useRef(call);
+  const handleSendToAIRef = useRef<(text: string) => Promise<void>>(async () => {});
 
   useEffect(() => {
     personalityRef.current = personality;
@@ -106,128 +134,504 @@ export const useLiveTutor = ({
     isThinkingRef.current = isThinking;
   }, [isThinking]);
 
+  useEffect(() => {
+    languageRef.current = language || "en-US";
+  }, [language]);
+
+  useEffect(() => {
+    callRef.current = call;
+  }, [call]);
+
   const { mutateAsync: talkToAgent } = useMutation(
     trpc.meetings.talkToAgent.mutationOptions(),
   );
 
-  // Safely attempt starting speech recognition
-  const startSpeechRecognition = useCallback(() => {
-    if (!recognitionRef.current || isListeningRef.current) return;
-    try {
-      recognitionRef.current.start();
-    } catch (err) {
-      console.warn("SpeechRecognition start ignored:", err);
-      isListeningRef.current = false;
-      setIsListening(false);
+  const clearFinalizeTimer = useCallback(() => {
+    if (finalizeTimerRef.current) {
+      clearTimeout(finalizeTimerRef.current);
+      finalizeTimerRef.current = null;
     }
   }, []);
 
-  // Safely stop speech recognition
-  const stopSpeechRecognition = useCallback(() => {
-    if (!recognitionRef.current) return;
-    try {
-      recognitionRef.current.stop();
-    } catch (err) {
-      console.warn("SpeechRecognition stop ignored:", err);
+  const stopTtsPlayback = useCallback(() => {
+    if (ttsSourceRef.current) {
+      try {
+        ttsSourceRef.current.stop();
+      } catch (err) {}
+      try {
+        ttsSourceRef.current.disconnect();
+      } catch (err) {}
+      ttsSourceRef.current = null;
     }
   }, []);
 
-  useEffect(() => {
-    languageRef.current = language || "en-US";
-    if (recognitionRef.current) {
-      recognitionRef.current.lang = language || "en-US";
-      if (isListeningRef.current) {
-        stopSpeechRecognition();
-        setTimeout(() => {
-          if (isTutorEnabledRef.current && !isThinkingRef.current && !isSpeakingRef.current) {
-            startSpeechRecognition();
-          }
-        }, 100);
-      }
+  const cleanupTtsSession = useCallback(() => {
+    stopTtsPlayback();
+    if (ttsAudioContextRef.current) {
+      try {
+        ttsAudioContextRef.current.close();
+      } catch (err) {}
+      ttsAudioContextRef.current = null;
     }
-  }, [language, startSpeechRecognition, stopSpeechRecognition]);
+  }, [stopTtsPlayback]);
 
-  // Check and restart listening if applicable
-  const maybeRestart = useCallback(() => {
-    if (isTutorEnabledRef.current && !isThinkingRef.current && !isSpeakingRef.current) {
-      setTimeout(() => {
-        if (isTutorEnabledRef.current && !isThinkingRef.current && !isSpeakingRef.current) {
-          startSpeechRecognition();
-        }
-      }, 300);
+  const stopCaptureInput = useCallback(() => {
+    if (captureProcessorRef.current) {
+      try {
+        captureProcessorRef.current.disconnect();
+      } catch (err) {}
+      captureProcessorRef.current = null;
     }
-  }, [startSpeechRecognition]);
 
-  // Audio response synthesis (Text-to-Speech)
-  const speakText = useCallback((text: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      isSpeakingRef.current = false;
-      setIsSpeaking(false);
-      maybeRestart();
+    if (captureSourceRef.current) {
+      try {
+        captureSourceRef.current.disconnect();
+      } catch (err) {}
+      captureSourceRef.current = null;
+    }
+
+    if (captureGainRef.current) {
+      try {
+        captureGainRef.current.disconnect();
+      } catch (err) {}
+      captureGainRef.current = null;
+    }
+
+    if (captureAudioContextRef.current) {
+      try {
+        captureAudioContextRef.current.close();
+      } catch (err) {}
+      captureAudioContextRef.current = null;
+    }
+
+    if (captureStreamRef.current) {
+      captureStreamRef.current.getTracks().forEach((track) => track.stop());
+      captureStreamRef.current = null;
+    }
+  }, []);
+
+  const cleanupCaptureSession = useCallback(() => {
+    clearFinalizeTimer();
+
+    if (deepgramSocketRef.current) {
+      try {
+        deepgramSocketRef.current.onopen = null;
+        deepgramSocketRef.current.onmessage = null;
+        deepgramSocketRef.current.onerror = null;
+        deepgramSocketRef.current.onclose = null;
+        deepgramSocketRef.current.close();
+      } catch (err) {}
+      deepgramSocketRef.current = null;
+    }
+
+    stopCaptureInput();
+  }, [clearFinalizeTimer, stopCaptureInput]);
+
+  const finalizeAndSendTranscript = useCallback(async () => {
+    const textToSend = transcriptBufferRef.current.trim();
+    pendingFinalizeRef.current = false;
+    transcriptBufferRef.current = "";
+    latestInterimTranscriptRef.current = "";
+    setInterimTranscript("");
+    setIsListening(false);
+    setIsHoldToTalkActive(false);
+    isListeningRef.current = false;
+
+    cleanupCaptureSession();
+
+    if (!textToSend || isThinkingRef.current) {
       return;
     }
 
-    // Set speaking active immediately to prevent race conditions
-    isSpeakingRef.current = true;
-    setIsSpeaking(true);
-    lastSpeakTimeRef.current = Date.now();
-
-    // Stop speech recognition while speaking to prevent feedback loop / self-interruption
-    stopSpeechRecognition();
-
-    // Clean up markdown/formatting before speaking
-    const cleanText = text
-      .replace(/[*#_`~[\]]/g, "") // remove formatting characters
-      .replace(/\([^)]*\)/g, "") // remove parentheticals
-      .trim();
-
-    window.speechSynthesis.cancel(); // Stop any current speech
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = languageRef.current;
-    
-    // Choose a friendly voice matching the language if available
-    const voices = window.speechSynthesis.getVoices();
-    let voice = voices.find(v => v.lang.toLowerCase() === languageRef.current.toLowerCase());
-    if (!voice) {
-      const langPrefix = languageRef.current.split("-")[0].toLowerCase();
-      voice = voices.find(v => v.lang.toLowerCase().startsWith(langPrefix));
+    if (callRef.current) {
+      try {
+        callRef.current.sendCustomEvent({
+          type: "user-speech",
+          payload: {
+            text: textToSend,
+            userName: callRef.current.state.localParticipant?.name || "Student",
+          },
+        });
+      } catch (err) {
+        console.error("[useLiveTutor] Failed to broadcast user-speech event:", err);
+      }
     }
-    
-    if (languageRef.current.startsWith("en")) {
-      const friendlyVoice = voices.find(
-        (v) =>
-          v.name.includes("Google US English") ||
-          v.name.includes("Natural") ||
-          v.name.includes("Samantha"),
+
+    setLastSpeech({
+      speaker: callRef.current?.state.localParticipant?.name || "Student",
+      text: textToSend,
+    });
+
+    lastSentTextRef.current = textToSend;
+    await handleSendToAIRef.current(textToSend);
+  }, [cleanupCaptureSession]);
+
+  const playDeepgramTts = useCallback(
+    async (text: string) => {
+      if (typeof window === "undefined") return;
+
+      cleanupTtsSession();
+
+      const apiKey = await getDeepgramKey();
+      const model = resolveDeepgramTtsModel(languageRef.current);
+
+      const response = await fetch(
+        `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(model)}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text }),
+        },
       );
-      if (friendlyVoice) voice = friendlyVoice;
-    }
-    if (voice) utterance.voice = voice;
 
-    utterance.onstart = () => {
+      if (!response.ok) {
+        throw new Error(`Deepgram TTS failed with status ${response.status}`);
+      }
+
+      const audioContext =
+        ttsAudioContextRef.current || new window.AudioContext();
+      ttsAudioContextRef.current = audioContext;
+
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      source.onended = () => {
+        if (ttsSourceRef.current === source) {
+          ttsSourceRef.current = null;
+        }
+        isSpeakingRef.current = false;
+        setIsSpeaking(false);
+      };
+      ttsSourceRef.current = source;
+      source.start(0);
+    },
+    [stopTtsPlayback],
+  );
+
+  const speakText = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
+      if (typeof window === "undefined") return;
+
       isSpeakingRef.current = true;
       setIsSpeaking(true);
-      lastSpeakTimeRef.current = Date.now();
-      stopSpeechRecognition();
-    };
+      setIsThinking(false);
+      isThinkingRef.current = false;
 
-    const handleSpeechEnd = () => {
-      isSpeakingRef.current = false;
+      try {
+        await playDeepgramTts(
+          text
+            .replace(/[*#_`~[\]]/g, "")
+            .replace(/\([^)]*\)/g, "")
+            .trim(),
+        );
+      } catch (err) {
+        console.error("Deepgram TTS Error:", err);
+        isSpeakingRef.current = false;
+        setIsSpeaking(false);
+      }
+    },
+    [playDeepgramTts],
+  );
+
+  const handleSendToAI = useCallback(
+    async (text: string) => {
+      if (!text.trim() || isThinkingRef.current || !call) {
+        console.warn(
+          `[useLiveTutor] handleSendToAI skipped. Text length: ${text?.trim()?.length}, isThinking: ${isThinkingRef.current}, callInitialized: ${!!call}`,
+        );
+        return;
+      }
+
+      console.log(
+        `[useLiveTutor] Sending text to AI tutor for meeting: ${meetingId}. Text: "${text}"`,
+      );
+
+      setIsThinking(true);
+      isThinkingRef.current = true;
+
+      call.sendCustomEvent({
+        type: "ai-thinking",
+        payload: { active: true },
+      }).catch((err) => {
+        console.error(
+          "[useLiveTutor] Failed to broadcast ai-thinking (active) custom event:",
+          err,
+        );
+      });
+
+      try {
+        const response = await talkToAgent({
+          meetingId,
+          text,
+          personality: personalityRef.current,
+          language: languageRef.current,
+        });
+
+        console.log(
+          `[useLiveTutor] Received response from tRPC agent for meeting: ${meetingId}`,
+        );
+        const { cleanText, elements } = extractAndStripDrawing(response.text);
+
+        await speakText(cleanText);
+        setLastSpeech({ speaker: agentName, text: cleanText });
+
+        call.sendCustomEvent({
+          type: "ai-voice",
+          payload: { text: cleanText, senderPlayedLocally: true },
+        }).catch((err) => {
+          console.error(
+            "[useLiveTutor] Failed to broadcast ai-voice response custom event:",
+            err,
+          );
+        });
+
+        if (elements && elements.length > 0) {
+          console.log(
+            `[useLiveTutor] Broadcasting ${elements.length} Excalidraw elements for meeting: ${meetingId}`,
+          );
+          call.sendCustomEvent({
+            type: "ai-draw",
+            payload: { elements },
+          }).catch((err) => {
+            console.error(
+              "[useLiveTutor] Failed to broadcast ai-draw custom event:",
+              err,
+            );
+          });
+        }
+      } catch (err) {
+        console.error(
+          `[useLiveTutor] Error talking to AI tutor for meeting ${meetingId}:`,
+          err,
+        );
+        toast.error("Failed to get response from AI Tutor");
+      } finally {
+        setIsThinking(false);
+        isThinkingRef.current = false;
+        call.sendCustomEvent({
+          type: "ai-thinking",
+          payload: { active: false },
+        }).catch((err) => {
+          console.error(
+            "[useLiveTutor] Failed to broadcast ai-thinking (inactive) custom event:",
+            err,
+          );
+        });
+      }
+    },
+    [agentName, call, meetingId, speakText, talkToAgent],
+  );
+
+  useEffect(() => {
+    handleSendToAIRef.current = handleSendToAI;
+  }, [handleSendToAI]);
+
+  const scheduleFinalizeFlush = useCallback(() => {
+    clearFinalizeTimer();
+    finalizeTimerRef.current = setTimeout(() => {
+      void finalizeAndSendTranscript();
+    }, 350);
+  }, [clearFinalizeTimer, finalizeAndSendTranscript]);
+
+  const startHoldToTalk = useCallback(async () => {
+    if (!isTutorEnabledRef.current || isListeningRef.current || isThinkingRef.current) {
+      return;
+    }
+
+    if (typeof window === "undefined") return;
+
+    try {
+      clearFinalizeTimer();
+      pendingFinalizeRef.current = false;
+      transcriptBufferRef.current = "";
+      latestInterimTranscriptRef.current = "";
+      lastSentTextRef.current = "";
+      setTranscript("");
+      setInterimTranscript("");
+      setIsListening(true);
+      isListeningRef.current = true;
+      setIsHoldToTalkActive(true);
+      stopTtsPlayback();
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      captureStreamRef.current = stream;
+
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) {
+        throw new Error("Web Audio API is not supported in this browser.");
+      }
+      const audioContext = new AudioContextClass();
+      captureAudioContextRef.current = audioContext;
+
+      if (audioContext.state === "suspended") {
+        await audioContext.resume();
+      }
+
+      const apiKey = await getDeepgramKey();
+      const dgLanguage = resolveDeepgramLanguage(languageRef.current);
+      const socketUrl = new URL("wss://api.deepgram.com/v1/listen");
+      socketUrl.searchParams.set("model", "nova-3");
+      socketUrl.searchParams.set("interim_results", "true");
+      socketUrl.searchParams.set("smart_format", "true");
+      socketUrl.searchParams.set("punctuate", "true");
+      socketUrl.searchParams.set("endpointing", "500");
+      socketUrl.searchParams.set("encoding", "linear16");
+      socketUrl.searchParams.set("sample_rate", String(audioContext.sampleRate));
+      socketUrl.searchParams.set("channels", "1");
+      if (dgLanguage) {
+        socketUrl.searchParams.set("language", dgLanguage);
+      }
+
+      const socket = new WebSocket(socketUrl.toString(), ["token", apiKey]);
+      deepgramSocketRef.current = socket;
+
+      socket.onopen = () => {
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 0;
+
+        captureSourceRef.current = source;
+        captureProcessorRef.current = processor;
+        captureGainRef.current = gainNode;
+
+        source.connect(processor);
+        processor.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        processor.onaudioprocess = (event) => {
+          if (
+            deepgramSocketRef.current &&
+            deepgramSocketRef.current.readyState === WebSocket.OPEN
+          ) {
+            const inputData = event.inputBuffer.getChannelData(0);
+            const buffer = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              const sample = Math.max(-1, Math.min(1, inputData[i]));
+              buffer[i] = sample < 0 ? sample * 32768 : sample * 32767;
+            }
+            deepgramSocketRef.current.send(buffer.buffer);
+          }
+        };
+      };
+
+      socket.onmessage = (message) => {
+        try {
+          const received = JSON.parse(message.data);
+          const transcript = received?.channel?.alternatives?.[0]?.transcript?.trim();
+
+          if (!transcript) return;
+
+          if (received.is_final || received.speech_final || received.from_finalize) {
+            transcriptBufferRef.current = `${transcriptBufferRef.current}${transcript} `;
+            setInterimTranscript("");
+            latestInterimTranscriptRef.current = "";
+
+            if (pendingFinalizeRef.current) {
+              scheduleFinalizeFlush();
+            }
+          } else {
+            setInterimTranscript(transcript);
+            latestInterimTranscriptRef.current = transcript;
+          }
+        } catch (err) {
+          console.error("Failed to parse Deepgram transcript message:", err);
+        }
+      };
+
+      socket.onerror = (error) => {
+        console.error("Deepgram Socket Error", error);
+        toast.error("Deepgram speech capture failed.");
+      };
+
+      socket.onclose = () => {
+        setIsListening(false);
+        isListeningRef.current = false;
+        setIsHoldToTalkActive(false);
+      };
+    } catch (err) {
+      console.error("Failed to initialize Deepgram capture:", err);
+      toast.error("Could not start speech capture. Check microphone permissions.");
+      cleanupCaptureSession();
+      setIsListening(false);
+      isListeningRef.current = false;
+      setIsHoldToTalkActive(false);
+    }
+  }, [
+    clearFinalizeTimer,
+    cleanupCaptureSession,
+    cleanupTtsSession,
+    scheduleFinalizeFlush,
+    stopTtsPlayback,
+    stopCaptureInput,
+  ]);
+
+  const stopHoldToTalk = useCallback(() => {
+    if (!isListeningRef.current && !deepgramSocketRef.current) {
+      setIsHoldToTalkActive(false);
+      return;
+    }
+
+    pendingFinalizeRef.current = true;
+    setIsListening(false);
+    isListeningRef.current = false;
+    setIsHoldToTalkActive(false);
+    stopCaptureInput();
+
+    if (deepgramSocketRef.current && deepgramSocketRef.current.readyState === WebSocket.OPEN) {
+      try {
+        deepgramSocketRef.current.send(JSON.stringify({ type: "Finalize" }));
+      } catch (err) {
+        console.error("Failed to send Deepgram finalize message:", err);
+      }
+    }
+
+    clearFinalizeTimer();
+    finalizeTimerRef.current = setTimeout(() => {
+      void finalizeAndSendTranscript();
+    }, 900);
+  }, [clearFinalizeTimer, finalizeAndSendTranscript]);
+
+  const toggleTutor = useCallback(() => {
+    if (!hasMicPermission) {
+      toast.error("Microphone permission is required for Talk to AI.");
+      return;
+    }
+
+    const nextState = !isTutorEnabledRef.current;
+    setIsTutorEnabled(nextState);
+    isTutorEnabledRef.current = nextState;
+
+    if (!nextState) {
+      pendingFinalizeRef.current = false;
+      transcriptBufferRef.current = "";
+      latestInterimTranscriptRef.current = "";
+      lastSentTextRef.current = "";
+      setTranscript("");
+      setInterimTranscript("");
+      setIsListening(false);
+      setIsHoldToTalkActive(false);
+      setIsThinking(false);
       setIsSpeaking(false);
-      maybeRestart();
-    };
+      isListeningRef.current = false;
+      isThinkingRef.current = false;
+      isSpeakingRef.current = false;
+      cleanupCaptureSession();
+      cleanupTtsSession();
+    }
+  }, [cleanupCaptureSession, cleanupTtsSession, hasMicPermission]);
 
-    utterance.onend = handleSpeechEnd;
-    utterance.onerror = (e) => {
-      console.error("Speech synthesis error:", e);
-      handleSpeechEnd();
-    };
-
-    window.speechSynthesis.speak(utterance);
-  }, [stopSpeechRecognition, maybeRestart]);
-
-  // Listen to Stream Call custom events for real-time synchronization
   useEffect(() => {
     if (!call) return;
 
@@ -237,17 +641,16 @@ export const useLiveTutor = ({
 
       if (type === "ai-thinking") {
         setIsThinking(payload.active);
+        isThinkingRef.current = payload.active;
       } else if (type === "user-speech") {
         setLastSpeech({ speaker: payload.userName, text: payload.text });
       } else if (type === "ai-voice") {
         const { cleanText } = extractAndStripDrawing(payload.text);
         setLastSpeech({ speaker: agentName, text: cleanText });
-        // Play speech for everyone if it wasn't played locally by the sender (e.g. whiteboard RAG vision response)
         const isSender = event.user.id === call.currentUserId;
         if (!isSender || !payload.senderPlayedLocally) {
-          speakText(cleanText);
+          void speakText(cleanText);
         }
-        // Trigger confetti for praise words
         checkPraiseAndTriggerConfetti(cleanText);
       }
     };
@@ -256,445 +659,22 @@ export const useLiveTutor = ({
     return () => {
       unsubscribe();
     };
-  }, [call, agentName, speakText]);
+  }, [agentName, call, speakText]);
 
-  // Handle sending text to AI agent
-  const handleSendToAI = async (text: string) => {
-    if (!text.trim() || isThinkingRef.current || !call) {
-      console.warn(`[useLiveTutor] handleSendToAI skipped. Text length: ${text?.trim()?.length}, isThinking: ${isThinkingRef.current}, callInitialized: ${!!call}`);
-      return;
-    }
-
-    console.log(`[useLiveTutor] Sending text to AI tutor for meeting: ${meetingId}. Text: "${text}"`);
-    // Stop listening during processing
-    stopSpeechRecognition();
-
-    setIsThinking(true);
-    // Broadcast AI is thinking
-    call.sendCustomEvent({
-      type: "ai-thinking",
-      payload: { active: true },
-    }).catch(err => {
-      console.error("[useLiveTutor] Failed to broadcast ai-thinking (active) custom event:", err);
-    });
-
-    try {
-      // Query Gemini via tRPC
-      const response = await talkToAgent({
-        meetingId,
-        text,
-        personality: personalityRef.current,
-        language: languageRef.current,
-      });
-
-      console.log(`[useLiveTutor] Received response from tRPC agent for meeting: ${meetingId}`);
-      const { cleanText, elements } = extractAndStripDrawing(response.text);
-
-      // Play locally for the sender immediately to reduce latency feel
-      speakText(cleanText);
-      setLastSpeech({ speaker: agentName, text: cleanText });
-
-      // Broadcast the response so other participants hear and see it
-      call.sendCustomEvent({
-        type: "ai-voice",
-        payload: { text: cleanText, senderPlayedLocally: true },
-      }).catch(err => {
-        console.error("[useLiveTutor] Failed to broadcast ai-voice response custom event:", err);
-      });
-
-      // Broadcast drawing elements to the whiteboard
-      if (elements && elements.length > 0) {
-        console.log(`[useLiveTutor] Broadcasting ${elements.length} Excalidraw elements for meeting: ${meetingId}`);
-        call.sendCustomEvent({
-          type: "ai-draw",
-          payload: { elements },
-        }).catch(err => {
-          console.error("[useLiveTutor] Failed to broadcast ai-draw custom event:", err);
-        });
-      }
-
-    } catch (err) {
-      console.error(`[useLiveTutor] Error talking to AI tutor for meeting ${meetingId}:`, err);
-      toast.error("Failed to get response from AI Tutor");
-      maybeRestart();
-    } finally {
-      setIsThinking(false);
-      call.sendCustomEvent({
-        type: "ai-thinking",
-        payload: { active: false },
-      }).catch(err => {
-        console.error("[useLiveTutor] Failed to broadcast ai-thinking (inactive) custom event:", err);
-      });
-      // Fallback delay restart in case speech synthesis failed to invoke start/end events
-      setTimeout(() => {
-        maybeRestart();
-      }, 500);
-    }
-  };
-
-  // Sync refs to avoid re-triggering the SpeechRecognition initialization effect
-  const handleSendToAIRef = useRef(handleSendToAI);
-  const callRef = useRef(call);
-  const maybeRestartRef = useRef(maybeRestart);
-
-  useEffect(() => {
-    handleSendToAIRef.current = handleSendToAI;
-  }, [handleSendToAI]);
-
-  useEffect(() => {
-    callRef.current = call;
-  }, [call]);
-
-  useEffect(() => {
-    maybeRestartRef.current = maybeRestart;
-  }, [maybeRestart]);
-
-  // Interrupt AI speaking if user starts speaking
   useEffect(() => {
     if (isLocalParticipantSpeaking && isSpeakingRef.current) {
-      console.log("[useLiveTutor] User started speaking. Interrupting AI speech synthesis.");
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+      stopTtsPlayback();
       isSpeakingRef.current = false;
       setIsSpeaking(false);
-
-      if (call) {
-        call.sendCustomEvent({
-          type: "ai-thinking",
-          payload: { active: false },
-        }).catch(err => {
-          console.error("[useLiveTutor] Failed to broadcast ai-thinking (inactive) custom event on interruption:", err);
-        });
-      }
-
-      // Start speech recognition immediately so we can capture the user's speech
-      startSpeechRecognition();
     }
-  }, [isLocalParticipantSpeaking, call, startSpeechRecognition]);
+  }, [isLocalParticipantSpeaking, stopTtsPlayback]);
 
-  const stopVolumeAnalyzer = useCallback(() => {
-    if (audioProcessorRef.current) {
-      try {
-        audioProcessorRef.current.disconnect();
-      } catch (e) {}
-      audioProcessorRef.current = null;
-    }
-    if (audioContextRef.current) {
-      try {
-        audioContextRef.current.close();
-      } catch (e) {}
-      audioContextRef.current = null;
-    }
-    if (audioStreamRef.current) {
-      try {
-        audioStreamRef.current.getTracks().forEach((track) => track.stop());
-      } catch (e) {}
-      audioStreamRef.current = null;
-    }
-  }, []);
-
-  const startVolumeAnalyzer = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    try {
-      stopVolumeAnalyzer();
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioStreamRef.current = stream;
-
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioContext = new AudioContextClass();
-      audioContextRef.current = audioContext;
-
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(2048, 1, 1);
-      audioProcessorRef.current = processor;
-
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          sum += inputData[i] * inputData[i];
-        }
-        const rms = Math.sqrt(sum / inputData.length);
-        
-        // Threshold: 0.015 (1.5% of max volume)
-        const threshold = 0.015;
-        const aboveThreshold = rms > threshold;
-        
-        if (aboveThreshold) {
-          lastActiveAudioTimeRef.current = Date.now();
-        }
-      };
-
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-    } catch (err) {
-      console.warn("[useLiveTutor] Failed to start volume analyzer:", err);
-    }
-  }, [stopVolumeAnalyzer]);
-
-  // Initialize browser Speech Recognition exactly once on mount
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) return;
-
-    const rec = new SpeechRecognition();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = languageRef.current;
-
-    rec.onstart = () => {
-      setIsListening(true);
-      isListeningRef.current = true;
-      setTranscript("");
-      setInterimTranscript("");
-      lastSentTextRef.current = "";
-    };
-
-    // Immediately stop synthesis when user starts speaking (barge-in interruption)
-    const handleInterruption = () => {
-      const timeSinceSpeak = Date.now() - lastSpeakTimeRef.current;
-      // Cooldown of 1.5 seconds to avoid AI interrupting itself with its own voice echo
-      if (isSpeakingRef.current && timeSinceSpeak > 1500 && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        isSpeakingRef.current = false;
-        setIsSpeaking(false);
-        
-        // Broadcast AI is silenced to other participants
-        const currentCall = callRef.current;
-        if (currentCall) {
-          currentCall.sendCustomEvent({
-            type: "ai-thinking",
-            payload: { active: false },
-          });
-        }
-      }
-    };
-
-    rec.onsoundstart = handleInterruption;
-    rec.onspeechstart = handleInterruption;
-
-    rec.onresult = async (event: any) => {
-      let interimTrans = "";
-      let finalTrans = "";
-
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalTrans += event.results[i][0].transcript;
-        } else {
-          interimTrans += event.results[i][0].transcript;
-        }
-      }
-
-      const timeSinceActiveAudio = Date.now() - lastActiveAudioTimeRef.current;
-      const isVoiceActive = timeSinceActiveAudio < 1500;
-
-      if (!isVoiceActive) {
-        // If we haven't detected voice above the threshold, ignore this interim transcript
-        setInterimTranscript("");
-        latestInterimTranscriptRef.current = "";
-        return;
-      }
-
-      // Clear any pending silence timer
-      if (silenceTimeoutRef.current) {
-        clearTimeout(silenceTimeoutRef.current);
-        silenceTimeoutRef.current = null;
-      }
-
-      if (interimTrans) {
-        setInterimTranscript(interimTrans);
-        latestInterimTranscriptRef.current = interimTrans;
-
-        // Start a timer to manually finalize after 900ms of silence
-        silenceTimeoutRef.current = setTimeout(async () => {
-          const textToSend = latestInterimTranscriptRef.current.trim();
-          if (textToSend && !isSpeakingRef.current && !isThinkingRef.current) {
-            console.log(`[useLiveTutor] Silence detected. Manually finalising transcript: "${textToSend}"`);
-            
-            // Stop recognition immediately
-            if (recognitionRef.current) {
-              try {
-                recognitionRef.current.stop();
-              } catch (e) {}
-            }
-            setIsListening(false);
-            isListeningRef.current = false;
-            setInterimTranscript("");
-            latestInterimTranscriptRef.current = "";
-            lastSentTextRef.current = textToSend;
-
-            // Send to AI
-            const currentCall = callRef.current;
-            if (currentCall) {
-              currentCall.sendCustomEvent({
-                type: "user-speech",
-                payload: {
-                  text: textToSend,
-                  userName: currentCall.state.localParticipant?.name || "Student",
-                },
-              });
-              setLastSpeech({
-                speaker: currentCall.state.localParticipant?.name || "Student",
-                text: textToSend,
-              });
-              await handleSendToAIRef.current(textToSend);
-            }
-          }
-        }, 900);
-      }
-
-      if (finalTrans.trim()) {
-        const text = finalTrans.trim();
-        // Clear silence timeout since we got the final result
-        if (silenceTimeoutRef.current) {
-          clearTimeout(silenceTimeoutRef.current);
-          silenceTimeoutRef.current = null;
-        }
-        
-        // Skip duplicate sending if we already manual-finalized it
-        if (
-          lastSentTextRef.current === text || 
-          lastSentTextRef.current.startsWith(text) || 
-          text.startsWith(lastSentTextRef.current)
-        ) {
-          console.log("[useLiveTutor] Ignoring duplicate final transcript:", text);
-          setInterimTranscript("");
-          latestInterimTranscriptRef.current = "";
-          return;
-        }
-
-        setInterimTranscript("");
-        latestInterimTranscriptRef.current = "";
-        lastSentTextRef.current = text;
-        setTranscript(text);
-
-        // Final fallback to cancel speech when transcription result is parsed
-        if (isSpeakingRef.current && window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-          isSpeakingRef.current = false;
-          setIsSpeaking(false);
-        }
-
-        const currentCall = callRef.current;
-        if (currentCall) {
-          currentCall.sendCustomEvent({
-            type: "user-speech",
-            payload: {
-              text,
-              userName: currentCall.state.localParticipant?.name || "Student",
-            },
-          });
-          setLastSpeech({
-            speaker: currentCall.state.localParticipant?.name || "Student",
-            text,
-          });
-          await handleSendToAIRef.current(text);
-        }
-      }
-    };
-
-    rec.onerror = (e: any) => {
-      const errorType = e.error;
-      setInterimTranscript("");
-      if (errorType !== "aborted" && errorType !== "no-speech") {
-        console.error("Speech recognition error:", errorType);
-        
-        // Disable tutor on critical capture/permission/network errors to prevent loops
-        if (
-          errorType === "audio-capture" || 
-          errorType === "not-allowed" || 
-          errorType === "service-not-allowed" ||
-          errorType === "network"
-        ) {
-          toast.error(
-            `Speech recognition failed: ${
-              errorType === "network"
-                ? "network connectivity issue"
-                : errorType === "audio-capture"
-                ? "microphone already in use or disabled"
-                : errorType
-            }. Talk to AI disabled.`
-          );
-          setIsTutorEnabled(false);
-          isTutorEnabledRef.current = false;
-          setIsListening(false);
-          isListeningRef.current = false;
-          stopSpeechRecognition();
-          stopVolumeAnalyzer();
-          if (typeof window !== "undefined" && window.speechSynthesis) {
-            window.speechSynthesis.cancel();
-          }
-          isSpeakingRef.current = false;
-          setIsSpeaking(false);
-          setIsThinking(false);
-          isThinkingRef.current = false;
-          return;
-        }
-      }
-      setIsListening(false);
-      isListeningRef.current = false;
-    };
-
-    rec.onend = () => {
-      setIsListening(false);
-      isListeningRef.current = false;
-      setInterimTranscript("");
-      maybeRestartRef.current();
-    };
-
-    recognitionRef.current = rec;
-
     return () => {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (err) {}
-      }
-      if (silenceTimeoutRef.current) {
-        clearTimeout(silenceTimeoutRef.current);
-      }
-      stopVolumeAnalyzer();
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+      cleanupCaptureSession();
+      cleanupTtsSession();
     };
-  }, []);
-
-  const toggleTutor = useCallback(() => {
-    if (!recognitionRef.current) {
-      toast.error("Speech recognition is not supported in this browser.");
-      return;
-    }
-
-    const nextState = !isTutorEnabledRef.current;
-    setIsTutorEnabled(nextState);
-    isTutorEnabledRef.current = nextState;
-
-    if (nextState) {
-      startSpeechRecognition();
-      startVolumeAnalyzer();
-    } else {
-      stopSpeechRecognition();
-      stopVolumeAnalyzer();
-      setIsListening(false);
-      isListeningRef.current = false;
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-      isSpeakingRef.current = false;
-      setIsSpeaking(false);
-      setIsThinking(false);
-      isThinkingRef.current = false;
-      setInterimTranscript("");
-    }
-  }, [startSpeechRecognition, stopSpeechRecognition]);
+  }, [cleanupCaptureSession, cleanupTtsSession]);
 
   return {
     isTutorEnabled,
@@ -704,7 +684,10 @@ export const useLiveTutor = ({
     transcript,
     interimTranscript,
     lastSpeech,
+    isHoldToTalkActive,
     toggleTutor,
+    startHoldToTalk,
+    stopHoldToTalk,
     speakText,
     handleSendToAI,
   };

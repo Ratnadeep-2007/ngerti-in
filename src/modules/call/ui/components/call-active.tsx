@@ -244,7 +244,10 @@ export const CallActive = ({
     isSpeaking,
     interimTranscript,
     lastSpeech,
+    isHoldToTalkActive,
     toggleTutor,
+    startHoldToTalk,
+    stopHoldToTalk,
   } = useLiveTutor({
     meetingId,
     agentId: agentId || "",
@@ -348,6 +351,21 @@ export const CallActive = ({
     const url = window.location.href;
     navigator.clipboard.writeText(url);
     toast.success("Meeting link copied to clipboard!");
+  };
+
+  const handleHoldStart = async () => {
+    if (!isTutorEnabled || isThinking) return;
+    try {
+      await startHoldToTalk();
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not start Talk to AI.");
+    }
+  };
+
+  const handleHoldEnd = () => {
+    if (!isTutorEnabled) return;
+    stopHoldToTalk();
   };
 
   const handleRemove = async () => {
@@ -544,6 +562,33 @@ export const CallActive = ({
               className="data-[state=checked]:bg-purple-600"
             />
           </div>
+
+          {isTutorEnabled && (
+            <button
+              type="button"
+              onPointerDown={handleHoldStart}
+              onPointerUp={handleHoldEnd}
+              onPointerLeave={handleHoldEnd}
+              onPointerCancel={handleHoldEnd}
+              onBlur={handleHoldEnd}
+              disabled={isThinking}
+              className={`flex items-center gap-3 px-5 py-3 rounded-2xl border transition-all duration-200 select-none touch-none ${
+                isHoldToTalkActive
+                  ? "bg-red-500/20 border-red-500/40 text-red-300 shadow-[0_0_18px_rgba(239,68,68,0.22)]"
+                  : "bg-violet-500/15 border-violet-500/30 text-violet-200 hover:bg-violet-500/20"
+              } ${isThinking ? "opacity-70 cursor-not-allowed" : "cursor-pointer"}`}
+              title="Hold to talk to AI"
+            >
+              <Mic className={`w-5 h-5 ${isHoldToTalkActive ? "animate-pulse" : ""}`} />
+              <span className="text-sm font-semibold tracking-wide">
+                {isThinking
+                  ? "AI is thinking"
+                  : isHoldToTalkActive
+                    ? "Listening... release to send"
+                    : "Hold to Talk to AI"}
+              </span>
+            </button>
+          )}
 
           {/* Personality Selector */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#171a1c] border border-white/10 rounded-full hover:border-purple-500/30 transition-all duration-200 shadow-md">

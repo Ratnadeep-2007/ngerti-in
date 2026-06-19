@@ -15,10 +15,9 @@ export async function getDeepgramKey() {
       }
     }
   } catch (e) {}
-  
+
   if (!key) {
-    // Fallback directly to the key provided in instructions if env fails to load
-    return "e671bdc7a89845678d858a8bf6c822d1e6426cae";
+    throw new Error("Missing DEEPGRAM_API_KEY or NEXT_PUBLIC_DEEPGRAM_API_KEY");
   }
   return key;
 }
