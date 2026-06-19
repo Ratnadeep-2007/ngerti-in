@@ -7,7 +7,7 @@ import {
   StreamVideoClient,
 } from "@stream-io/video-react-sdk";
 import { Loader2Icon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "@/trpc/client";
 import "@stream-io/video-react-sdk/dist/css/styles.css";
 import { useMutation } from "@tanstack/react-query";
@@ -43,6 +43,7 @@ export const CallConnect = ({
   );
 
   const [client, setClient] = useState<StreamVideoClient>();
+  const leaveRequestedRef = useRef(false);
 
   useEffect(() => {
     const _client = StreamVideoClient.getOrCreateInstance({
@@ -72,13 +73,17 @@ export const CallConnect = ({
     _call.camera.disable();
     _call.microphone.disable();
     setCall(_call);
+    leaveRequestedRef.current = false;
 
     return () => {
-      try {
-        _call.leave();
-      } catch (err) {
-        // Ignore "Cannot leave call that has already been left" error
+      if (leaveRequestedRef.current || _call.state.callingState === CallingState.LEFT) {
+        setCall(undefined);
+        return;
       }
+      leaveRequestedRef.current = true;
+      void _call.leave().catch(() => {
+        // Ignore double-leave and teardown races during navigation/unmount.
+      });
       setCall(undefined);
     };
   }, [client, meetingId]);

@@ -5,8 +5,8 @@ describe('agentsInsertSchema', () => {
   it('validates correct agent data', () => {
     const data = {
       name: 'Professor Math',
-      subject: 'Math',
-      language: 'English',
+      subject: 'Maths',
+      language: 'English (Formal)',
     }
     const result = agentsInsertSchema.safeParse(data)
     expect(result.success).toBe(true)
@@ -16,7 +16,7 @@ describe('agentsInsertSchema', () => {
     const data = {
       name: 'Professor Math',
       subject: 'History', // Not in the enum
-      language: 'English',
+      language: 'English (Formal)',
     }
     const result = agentsInsertSchema.safeParse(data)
     expect(result.success).toBe(false)
@@ -25,7 +25,7 @@ describe('agentsInsertSchema', () => {
   it('rejects missing language', () => {
     const data = {
       name: 'Professor Math',
-      subject: 'Math',
+      subject: 'Maths',
     }
     const result = agentsInsertSchema.safeParse(data)
     expect(result.success).toBe(false)

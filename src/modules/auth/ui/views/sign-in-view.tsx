@@ -90,6 +90,51 @@ const SignInView = () => {
     );
   };
 
+  const onGuestLogin = () => {
+    setError(null);
+    setPending(true);
+
+    const guestEmail = "guest@example.com";
+    const guestPassword = "guestpassword123";
+
+    authClient.signIn.email(
+      {
+        email: guestEmail,
+        password: guestPassword,
+        callbackURL: "/dashboard",
+      },
+      {
+        onSuccess: () => {
+          router.push("/dashboard");
+          setPending(false);
+        },
+        onError: () => {
+          authClient.signUp.email(
+            {
+              email: guestEmail,
+              password: guestPassword,
+              name: "Guest User",
+              callbackURL: "/dashboard",
+            },
+            {
+              onSuccess: () => {
+                router.push("/dashboard");
+                setPending(false);
+              },
+              onError: (error) => {
+                setError(
+                  error.error.message || "An error occurred while logging in as guest",
+                );
+                setPending(false);
+                console.warn("Guest login error details:", error);
+              },
+            },
+          );
+        },
+      },
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <Card className="overflow-hidden p-0">
@@ -171,6 +216,15 @@ const SignInView = () => {
                     }}
                   >
                     <FaGoogle />
+                  </Button>
+                  <Button
+                    type="button"
+                    isLoading={pending}
+                    variant="outline"
+                    className="w-full cursor-pointer border-dashed"
+                    onClick={onGuestLogin}
+                  >
+                    Login as Guest
                   </Button>
                 </div>
                 <div className="text-center text-sm">

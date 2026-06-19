@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import {
   SpeakerLayout,
+  CallingState,
   useCallStateHooks,
   useCall,
   ParticipantView,
@@ -41,6 +42,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChatProvider } from "@/modules/meetings/ui/components/chat-provider";
+import {
+  AGENT_LANGUAGE_OPTIONS,
+  type AgentLanguage,
+} from "@/lib/constants/agent-options";
 
 const AITutorCard = ({
   agentName,
@@ -218,11 +223,14 @@ export const CallActive = ({
   const [showChat, setShowChat] = useState(false);
   const [personality, setPersonality] = useState<"socratic" | "eli5" | "coach">("socratic");
   const [language, setLanguage] = useState<string>(() => {
-    if (agentLanguage === "English") return "en-US";
-    if (agentLanguage === "Standard" || agentLanguage === "Javanese" || agentLanguage === "Sundanese" || agentLanguage === "Slang") {
-      return "id-ID";
+    if (agentLanguage === "English (Formal)") return "en-GB";
+    if (agentLanguage === "English (Informal)") return "en-US";
+    if (agentLanguage === "Hindi") return "hi-IN";
+    if (agentLanguage === "Marathi") return "mr-IN";
+    if (agentLanguage && AGENT_LANGUAGE_OPTIONS.includes(agentLanguage as AgentLanguage)) {
+      return "en-GB";
     }
-    return "en-US";
+    return "en-GB";
   });
 
   const { useMicrophoneState, useCameraState, useLocalParticipant, useParticipants } = useCallStateHooks();
@@ -417,7 +425,8 @@ export const CallActive = ({
   };
 
   const handleLeave = async () => {
-    await call?.leave();
+    if (!call || call.state.callingState === CallingState.LEFT) return;
+    await call.leave().catch(() => {});
   };
 
   const handleEndMeeting = async () => {
@@ -450,7 +459,9 @@ export const CallActive = ({
 
     try {
       await removeMeeting({ id: meetingId });
-      await call?.leave();
+      if (call && call.state.callingState !== CallingState.LEFT) {
+        await call.leave().catch(() => {});
+      }
       toast.success("Meeting deleted successfully");
       router.push("/dashboard");
     } catch (err) {
@@ -703,10 +714,10 @@ export const CallActive = ({
               onChange={(e) => setLanguage(e.target.value)}
               className="bg-transparent text-xs font-bold text-white outline-none cursor-pointer pr-2 border-none focus:ring-0"
             >
-              <option value="en-US" className="bg-[#101213] text-white font-medium">🇺🇸 English</option>
-              <option value="id-ID" className="bg-[#101213] text-white font-medium">🇮🇩 Indonesian</option>
-              <option value="es-ES" className="bg-[#101213] text-white font-medium">🇪🇸 Spanish</option>
-              <option value="hi-IN" className="bg-[#101213] text-white font-medium">🇮🇳 Hindi</option>
+              <option value="en-GB" className="bg-[#101213] text-white font-medium">English (Formal)</option>
+              <option value="en-US" className="bg-[#101213] text-white font-medium">English (Informal)</option>
+              <option value="hi-IN" className="bg-[#101213] text-white font-medium">Hindi</option>
+              <option value="mr-IN" className="bg-[#101213] text-white font-medium">Marathi</option>
             </select>
           </div>
 

@@ -30,6 +30,10 @@ import {
 } from "@/components/ui/select";
 import { useState } from "react";
 import { AgentGetOne } from "../../types";
+import {
+  AGENT_LANGUAGE_OPTIONS,
+  AGENT_SUBJECT_OPTIONS,
+} from "@/lib/constants/agent-options";
 
 interface AgentFormProps {
   onSuccess?: () => void;
@@ -106,9 +110,13 @@ export const AgentForm = ({
     resolver: zodResolver(agentsInsertSchema),
     defaultValues: {
       name: initialValues?.name || "",
-      subject: initialValues?.subject || "Math",
+      subject:
+        (initialValues?.subject as (typeof AGENT_SUBJECT_OPTIONS)[number] | undefined) ||
+        "Maths",
       prompt: initialValues?.prompt || "",
-      language: initialValues?.language || "Standard",
+      language:
+        (initialValues?.language as (typeof AGENT_LANGUAGE_OPTIONS)[number] | undefined) ||
+        "English (Formal)",
     },
   });
   //   const [showCustomSubject, setShowCustomSubject] = useState(
@@ -168,18 +176,11 @@ export const AgentForm = ({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Math">Math</SelectItem>
-                    <SelectItem value="Bahasa Indonesia">
-                      Bahasa Indonesia
-                    </SelectItem>
-                    <SelectItem value="Natural Science">
-                      Natural Science
-                    </SelectItem>
-                    <SelectItem value="Social Science">
-                      Social Science
-                    </SelectItem>
-                    <SelectItem value="English">English</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
+                    {AGENT_SUBJECT_OPTIONS.map((subject) => (
+                      <SelectItem key={subject} value={subject}>
+                        {subject}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -192,22 +193,22 @@ export const AgentForm = ({
             control={form.control}
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Language/Dialect</FormLabel>
+                <FormLabel>Language</FormLabel>
                 <Select
                   defaultValue={field.value}
                   onValueChange={field.onChange}
                 >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a dialect" />
+                      <SelectValue placeholder="Select a language" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Standard">Standard (Formal)</SelectItem>
-                    <SelectItem value="English">English</SelectItem>
-                    <SelectItem value="Javanese">Javanese Dialect</SelectItem>
-                    <SelectItem value="Sundanese">Sundanese Dialect</SelectItem>
-                    <SelectItem value="Slang">Youth Slang (Bahasa Gaul)</SelectItem>
+                    {AGENT_LANGUAGE_OPTIONS.map((language) => (
+                      <SelectItem key={language} value={language}>
+                        {language}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />
