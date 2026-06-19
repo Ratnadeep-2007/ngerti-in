@@ -1,73 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
-import Groq from "groq-sdk";
-import { defaultTranslations } from "@/lib/ui-translations";
-import { translateUIStrings } from "@/lib/lingo";
+import { GoogleGenAI } from "@google/genai";
 
-const GROQ_UI_TRANSLATE_MODEL = process.env.GROQ_UI_TRANSLATE_MODEL ?? "llama-3.1-8b-instant";
+const GEMINI_UI_TRANSLATE_MODEL = process.env.GEMINI_UI_TRANSLATE_MODEL ?? "gemini-2.5-flash";
 
-async function translateWithGroq(
+async function translateWithGemini(
   strings: Record<string, string>,
   targetLocale: string
 ): Promise<Record<string, string> | null> {
-  const client = new Groq({ apiKey: process.env.GROQ_API_KEY! });
-  const prompt = `Translate ALL values in this JSON object from English to locale "${targetLocale}".
-Rules:
-- Keep every JSON key exactly as-is
-- Only translate the string values
-- Preserve emoji, {placeholder} tokens, and punctuation exactly
-- Return ONLY valid JSON, no markdown, no explanation
+  const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  const prompt = `Translate the following JSON object values to the language with locale code "${targetLocale}".
+Return ONLY a valid JSON object matching the input structure, with values translated.
+Do not wrap the output in markdown code blocks.
 
-${JSON.stringify(strings)}`;
+Input JSON:
+${JSON.stringify(strings, null, 2)}`;
 
   try {
-    const res = await client.chat.completions.create({
-      model: GROQ_UI_TRANSLATE_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
-      max_tokens: 8192,
-      response_format: { type: "json_object" },
+    const response = await client.models.generateContent({
+      model: GEMINI_UI_TRANSLATE_MODEL,
+      contents: prompt,
+      config: {
+        temperature: 0.1,
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json",
+      },
     });
 
-    const content = res.choices[0]?.message?.content;
+    const content = response.text;
     if (!content) return null;
+
     const parsed = JSON.parse(content);
-    const valid = Object.keys(strings).every((k) => k in parsed);
-    return valid ? (parsed as Record<string, string>) : null;
-  } catch {
+    return parsed as Record<string, string>;
+  } catch (error) {
+    console.error("Gemini UI translation failed:", error);
     return null;
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const { targetLocale } = await req.json();
-    if (!targetLocale || typeof targetLocale !== "string") {
-      return NextResponse.json({ error: "targetLocale required" }, { status: 400 });
+    const body = await request.json();
+    const { strings, targetLocale } = body as {
+      strings?: Record<string, string>;
+      targetLocale?: string;
+    };
+
+    if (!strings || !targetLocale || Object.keys(strings).length === 0) {
+      return NextResponse.json(
+        { error: "strings and targetLocale are required" },
+        { status: 400 }
+      );
     }
 
-    // English — return defaults
-    if (targetLocale === "en") {
-      return NextResponse.json({ translations: defaultTranslations, source: "default" });
+    // Try Gemini
+    const geminiResult = await translateWithGemini(strings, targetLocale);
+    if (geminiResult) {
+      return NextResponse.json({ translations: geminiResult, source: "gemini" });
     }
 
-    const strings = { ...defaultTranslations } as Record<string, string>;
-
-    // Try Groq first
-    const groqResult = await translateWithGroq(strings, targetLocale);
-    if (groqResult) {
-      return NextResponse.json({ translations: groqResult, source: "groq" });
-    }
-
-    // Fallback to Lingo.dev
-    try {
-      const lingoResult = await translateUIStrings(strings, targetLocale);
-      return NextResponse.json({ translations: lingoResult, source: "lingo" });
-    } catch (error) {
-      console.error("Lingo UI translation failed, returning defaults:", error);
-      return NextResponse.json({ translations: defaultTranslations, source: "default-fallback" });
-    }
-  } catch (err) {
-    console.error("ui-translate error:", err);
-    return NextResponse.json({ translations: defaultTranslations, source: "default-fallback" });
+    return NextResponse.json(
+      { error: "Failed to translate strings" },
+      { status: 500 }
+    );
+  } catch (error) {
+    console.error("ui-translate API error:", error);
+    return NextResponse.json(
+      { error: "Failed to translate UI strings" },
+      { status: 500 }
+    );
   }
 }

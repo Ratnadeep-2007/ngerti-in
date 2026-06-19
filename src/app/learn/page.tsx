@@ -6,6 +6,7 @@ import Link from "next/link";
 import { COMPANIONS } from "@/lib/companions";
 import { getAllLanguages } from "@/lib/languages";
 import type { LearningMode, QuizDifficulty } from "@/lib/types";
+import { getQuizPlan } from "@/lib/quiz-planner";
 import type {
   TranscriptSegment,
   VideoMetadata,
@@ -136,13 +137,12 @@ function HomePageInner() {
 
       setCurrentStep(2);
 
-      // Step 2: Analyze learning moments + Step 3: Generate quizzes (first 20 min only)
-      const INITIAL_WINDOW = 20 * 60;
       const duration = extractData.metadata.duration;
-      const initialEnd = Math.min(INITIAL_WINDOW, duration);
+      const quizPlan = getQuizPlan(duration, quizDifficulty);
+      const initialEnd = quizPlan.initialWindowSeconds;
       const initialMaxBp = Math.max(
         1,
-        Math.ceil(extractData.quizFrequency.maxBreakpoints * (initialEnd / duration))
+        Math.ceil(quizPlan.maxBreakpoints * (initialEnd / duration))
       );
 
       const quizzesRes = await fetch("/api/generate-quizzes", {
@@ -151,9 +151,10 @@ function HomePageInner() {
         body: JSON.stringify({
           transcript: extractData.transcript,
           maxBreakpoints: initialMaxBp,
-          questionsPerBreakpoint: extractData.quizFrequency.questionsPerBreakpoint,
+          questionsPerBreakpoint: quizPlan.questionsPerBreakpoint,
           startTime: 0,
           endTime: initialEnd,
+          difficulty: quizDifficulty,
         }),
       });
 
@@ -613,7 +614,7 @@ function HomePageInner() {
           <div className="mt-10 flex flex-wrap justify-center gap-3 animate-fade-in">
             {[
               { icon: "🌍", text: t("home.feature130") },
-              { icon: "⚡", text: t("home.pillGroqAI") },
+              { icon: "⚡", text: t("home.pillGroqAI", { defaultValue: "Gemini AI" }) },
               { icon: "🎓", text: t("home.pillCertificate") },
               { icon: "📊", text: t("home.pillProgress") },
             ].map((f) => (

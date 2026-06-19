@@ -22,7 +22,7 @@ export const defaultTranslations = {
   "home.chooseCompanion": "Choose your companion",
   "home.namePlaceholder": "e.g. Alex Rivera",
   "home.haveSession": "Already have a session?",
-  "home.pillGroqAI": "Groq AI",
+  "home.pillGroqAI": "Gemini AI",
   "home.pillCertificate": "Completion certificate",
   "home.pillProgress": "Progress tracking",
   "home.featureCompanions": "15 Pixel Companions",

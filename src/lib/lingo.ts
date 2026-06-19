@@ -9,7 +9,6 @@ import {
   MCQQuestion,
   TextQuestion,
   CodeQuestion,
-  VoiceQuestion,
 } from "./types";
 
 function getEngine() {
@@ -132,24 +131,8 @@ export async function translateBreakpoints(
         };
         return normalized;
       }
-      case "voice": {
-        const payload = [
-          question.question,
-          question.explanation || "",
-          question.expectedAnswer || "",
-          question.note || "",
-        ];
-        const translated = await engine.localizeStringArray(payload, { sourceLocale, targetLocale });
-        const [translatedQuestion, translatedExplanation, translatedExpectedAnswer, translatedNote] = translated;
-        const normalized: VoiceQuestion = {
-          ...question,
-          question: pickTranslated(translatedQuestion, question.question),
-          explanation: pickTranslated(translatedExplanation, question.explanation ?? ""),
-          expectedAnswer: pickTranslated(translatedExpectedAnswer, question.expectedAnswer ?? ""),
-          note: pickTranslated(translatedNote, question.note ?? ""),
-        };
-        return normalized;
-      }
+      default:
+        return question;
     }
   }
 

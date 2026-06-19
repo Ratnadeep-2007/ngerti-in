@@ -4,7 +4,7 @@ export interface TranscriptSegment {
   text: string;
 }
 
-export type QuestionType = "mcq" | "text" | "code" | "voice";
+export type QuestionType = "mcq" | "text" | "code";
 export type QuizDifficulty = "easy" | "medium" | "hard";
 
 interface BaseQuestion {
@@ -34,13 +34,7 @@ export interface CodeQuestion extends BaseQuestion {
   expectedOutput?: string;
 }
 
-export interface VoiceQuestion extends BaseQuestion {
-  type: "voice";
-  expectedAnswer?: string;
-  note?: string;
-}
-
-export type QuizQuestion = MCQQuestion | TextQuestion | CodeQuestion | VoiceQuestion;
+export type QuizQuestion = MCQQuestion | TextQuestion | CodeQuestion;
 
 export interface VideoMetadata {
   title: string;

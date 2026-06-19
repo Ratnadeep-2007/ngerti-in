@@ -47,7 +47,7 @@ const Footer = () => {
                 icon="📺"
               />
               <CreditItem
-                title="Groq"
+                title="Gemini"
                 desc={t("footer.inference")}
                 icon="⚡"
               />

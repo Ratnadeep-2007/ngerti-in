@@ -9,12 +9,15 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^2.9.0",
     "@lingo.dev/_locales": "^0.3.3",
     "@lingo.dev/_sdk": "^0.16.0",
-    "groq-sdk": "^0.37.0",
+    "@monaco-editor/react": "^4.7.0",
+    "groq-sdk": "^1.2.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
     "lingo.dev": "^0.133.2",
+    "monaco-editor": "^0.55.1",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

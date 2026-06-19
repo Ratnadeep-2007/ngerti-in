@@ -12,6 +12,7 @@ import SpeechBubble from "@/components/companion/SpeechBubble";
 import { getSession, updateProgress, updateSession, saveFinalQuiz, markFinalQuizPassed } from "@/lib/session";
 import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
+import { getQuizPlan } from "@/lib/quiz-planner";
 import type { Session, TranslatedContent, Breakpoint } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
 
@@ -54,12 +55,36 @@ function TrophyIcon() {
   );
 }
 
-function breakpointHasBlankOptions(breakpoint: Breakpoint): boolean {
-  return breakpoint.questions.some(
-    (question) =>
-      question.type === "mcq" &&
-      question.options.some((option) => !option || !option.trim())
-  );
+function breakpointNeedsRepair(breakpoint: Breakpoint): boolean {
+  const genericQuestionPatterns = [
+    /main goal/i,
+    /designed this course/i,
+    /ideal for kids/i,
+    /who has designed/i,
+    /what is the course about/i,
+    /what is the video about/i,
+    /purpose of adding an underscore/i,
+  ];
+
+  return breakpoint.questions.some((question) => {
+    if (question.type === "mcq") {
+      const normalizedOptions = question.options.map((option) => option.trim().toLowerCase());
+      const uniqueOptions = new Set(normalizedOptions);
+      const hasGenericOption = normalizedOptions.some((option) =>
+        ["option unavailable", "answer unavailable", "none of the above", "all of the above"].includes(option)
+      );
+
+      return (
+        question.options.length !== 4 ||
+        question.options.some((option) => !option || !option.trim()) ||
+        uniqueOptions.size !== normalizedOptions.length ||
+        hasGenericOption ||
+        genericQuestionPatterns.some((pattern) => pattern.test(question.question))
+      );
+    }
+
+    return genericQuestionPatterns.some((pattern) => pattern.test(question.question));
+  });
 }
 
 function resizeBooleanArray(values: boolean[], targetLength: number): boolean[] {
@@ -81,6 +106,7 @@ export default function LearnSessionPage() {
   // ── Session state ─────────────────────────────────────────────────────────
   const [session, setSession] = useState<Session | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const sessionDifficulty = session?.quizDifficulty ?? "medium";
 
   // ── Video player ref ─────────────────────────────────────────────────────
   const videoPlayerRef = useRef<VideoPlayerHandle>(null);
@@ -137,7 +163,7 @@ export default function LearnSessionPage() {
     if (!session || repairInProgress.current) return;
     if (!session.rawTranscript || session.translatedContent.breakpoints.length === 0) return;
 
-    const needsRepair = session.translatedContent.breakpoints.some(breakpointHasBlankOptions);
+    const needsRepair = session.translatedContent.breakpoints.some(breakpointNeedsRepair);
     if (!needsRepair) return;
 
     repairInProgress.current = true;
@@ -151,9 +177,10 @@ export default function LearnSessionPage() {
           body: JSON.stringify({
             transcript: session.rawTranscript,
             maxBreakpoints: breakpointsToRegenerate,
-            questionsPerBreakpoint: session.quizFrequency.questionsPerBreakpoint,
+            questionsPerBreakpoint: getQuizPlan(session.metadata.duration, sessionDifficulty).questionsPerBreakpoint,
             startTime: 0,
             endTime: session.metadata.duration,
+            difficulty: sessionDifficulty,
           }),
         });
 
@@ -256,14 +283,15 @@ export default function LearnSessionPage() {
     const generatedUpTo = session.quizzesGeneratedUpTo ?? 0;
     if (generatedUpTo >= session.metadata.duration) return;
 
+    const quizPlan = getQuizPlan(session.metadata.duration, sessionDifficulty);
     prefetchInProgress.current = true;
     try {
-      const nextEnd = Math.min(generatedUpTo + 20 * 60, session.metadata.duration);
+      const nextEnd = Math.min(generatedUpTo + quizPlan.prefetchWindowSeconds, session.metadata.duration);
       const windowDuration = nextEnd - generatedUpTo;
       const totalDuration = session.metadata.duration;
       const maxBp = Math.max(
         1,
-        Math.ceil(session.quizFrequency.maxBreakpoints * (windowDuration / totalDuration))
+        Math.ceil(quizPlan.maxBreakpoints * (windowDuration / totalDuration))
       );
 
       // 1. Generate quizzes for next window
@@ -273,9 +301,10 @@ export default function LearnSessionPage() {
         body: JSON.stringify({
           transcript: session.rawTranscript,
           maxBreakpoints: maxBp,
-          questionsPerBreakpoint: session.quizFrequency.questionsPerBreakpoint,
+          questionsPerBreakpoint: quizPlan.questionsPerBreakpoint,
           startTime: generatedUpTo,
           endTime: nextEnd,
+          difficulty: sessionDifficulty,
         }),
       });
       if (!quizzesRes.ok) return;
@@ -397,7 +426,8 @@ export default function LearnSessionPage() {
     };
 
     try {
-      const questionsPerBreakpoint = session.quizFrequency.questionsPerBreakpoint;
+      const quizPlan = getQuizPlan(session.metadata.duration, sessionDifficulty);
+      const questionsPerBreakpoint = quizPlan.questionsPerBreakpoint;
       const transcriptToUse = session.rawTranscript ?? session.originalTranscript;
 
       const res = await fetch("/api/generate-quizzes", {
@@ -407,6 +437,7 @@ export default function LearnSessionPage() {
           transcript: transcriptToUse,
           maxBreakpoints: 1,
           questionsPerBreakpoint,
+          difficulty: sessionDifficulty,
         }),
         signal: abortController.signal,
       });
@@ -569,7 +600,8 @@ export default function LearnSessionPage() {
     setIsGeneratingFinalQuiz(true);
     setFinalQuizGenError(false);
     try {
-      const questionsPerBreakpoint = session.quizFrequency.questionsPerBreakpoint;
+      const quizPlan = getQuizPlan(session.metadata.duration, sessionDifficulty);
+      const questionsPerBreakpoint = quizPlan.questionsPerBreakpoint;
       const transcriptToUse = session.rawTranscript ?? session.originalTranscript;
 
       const res = await fetch("/api/generate-quizzes", {
@@ -579,6 +611,7 @@ export default function LearnSessionPage() {
           transcript: transcriptToUse,
           maxBreakpoints: 1,
           questionsPerBreakpoint,
+          difficulty: sessionDifficulty,
         }),
       });
 

@@ -80,18 +80,21 @@
 
 html, body {
   overflow-x: hidden;
+  overflow-y: auto;
   max-width: 100vw;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
   background-image: url('../../public/background.jpg');
   background-size: cover;
   background-position: center;
-  background-attachment: fixed;
+  background-attachment: scroll;
   color: var(--foreground);
   font-family: 'VT323', monospace !important;
   font-size: 1.25rem;
-  transition: background-image 1.5s ease-in-out, background-color 1.5s ease-in-out, color 0.5s ease;
+  transition: background-image 0.5s ease-in-out, background-color 0.5s ease-in-out, color 0.2s ease;
 }
 
 /* Night Mode Background override */
@@ -104,15 +107,22 @@ body {
   border-radius: 0 !important;
 }
 
-/* Hide scrollbar for Chrome, Safari and Opera */
 ::-webkit-scrollbar {
-  display: none;
+  width: 10px;
+  height: 10px;
 }
 
-/* Hide scrollbar for IE, Edge and Firefox */
-html, body {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
 }
 
 [dir="rtl"] {
@@ -181,4 +191,23 @@ img {
 @keyframes credits-roll {
   0%   { transform: translateY(0); }
   100% { transform: translateY(calc(-100% + 360px)); }
+}
+
+@media (max-width: 640px) {
+  body {
+    background-attachment: scroll;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

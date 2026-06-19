@@ -19,7 +19,7 @@ export default function QuizOption({
   isRevealed,
   onSelect,
 }: QuizOptionProps) {
-  const displayText = text.trim() || "Option unavailable";
+  const displayText = text.trim();
   const letter = LETTER_LABELS[index] ?? String(index + 1);
 
   // Determine visual state
@@ -104,7 +104,7 @@ export default function QuizOption({
       onClick={() => !isDisabled && onSelect(index)}
       disabled={isDisabled}
       aria-pressed={isSelected}
-      aria-label={`Option ${letter}: ${displayText}`}
+      aria-label={displayText ? `Option ${letter}: ${displayText}` : `Option ${letter}`}
     >
       <span className={letterClasses}>{letter}</span>
       <span className={textClasses}>{displayText}</span>

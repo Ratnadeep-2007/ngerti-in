@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Editor from "@monaco-editor/react";
 import { isRTL } from "@/lib/languages";
 import type {
   Breakpoint,
   CodeQuestion,
   QuizQuestion,
   TextQuestion,
-  VoiceQuestion,
 } from "@/lib/types";
 import QuizOption from "./QuizOption";
 import { useTranslation } from "@/contexts/UILanguageContext";
@@ -32,7 +32,6 @@ interface AnswerState {
   selectedIndex: number | null;
   textValue: string;
   codeValue: string;
-  voiceAcknowledged: boolean;
   isRevealed: boolean;
   isCorrect: boolean | null;
 }
@@ -48,7 +47,6 @@ function buildInitialAnswers(count: number): AnswerState[] {
     selectedIndex: null,
     textValue: "",
     codeValue: "",
-    voiceAcknowledged: false,
     isRevealed: false,
     isCorrect: null,
   }));
@@ -63,6 +61,25 @@ function getBreakpointQuestions(breakpoint: Breakpoint, isRetry: boolean): QuizQ
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isOpenEndedQuestionType(type: QuizQuestion["type"]): boolean {
+  return type === "text";
+}
+
+function getMonacoLanguage(language: string): string {
+  const normalized = language.toLowerCase().trim();
+  if (normalized === "py" || normalized === "python") return "python";
+  if (normalized === "js" || normalized === "javascript") return "javascript";
+  if (normalized === "ts" || normalized === "typescript") return "typescript";
+  if (normalized === "c++" || normalized === "cpp") return "cpp";
+  if (normalized === "c#") return "csharp";
+  if (normalized === "c") return "c";
+  if (normalized === "java") return "java";
+  if (normalized === "go" || normalized === "golang") return "go";
+  if (normalized === "rust") return "rust";
+  if (normalized === "json") return "json";
+  return "javascript";
 }
 
 const TEXT_STOPWORDS = new Set([
@@ -130,7 +147,7 @@ function tokenizeMeaningful(value: string): string[] {
     ?.filter((token) => !TEXT_STOPWORDS.has(token)) ?? [];
 }
 
-function buildReferenceTokens(question: TextQuestion | VoiceQuestion): string[] {
+function buildReferenceTokens(question: TextQuestion): string[] {
   const tokens = new Set<string>();
 
   for (const token of tokenizeMeaningful(question.question)) tokens.add(token);
@@ -156,7 +173,7 @@ function overlapScore(answerTokens: string[], referenceTokens: string[]): number
   return shared.length / reference.size;
 }
 
-function isLikelyCorrectText(answer: string, question: TextQuestion | VoiceQuestion): boolean {
+function isLikelyCorrectText(answer: string, question: TextQuestion): boolean {
   const normalizedAnswer = normalizeText(answer);
   if (!normalizedAnswer) return false;
 
@@ -411,21 +428,6 @@ function ReviewCard({
         </div>
       )}
 
-      {question.type === "voice" && (
-        <div className="flex flex-col gap-1 text-xs text-muted/90">
-          <p>
-            <span className="font-semibold text-foreground">Mocked:</span>{" "}
-            Coming soon
-          </p>
-          {question.expectedAnswer && (
-            <p>
-              <span className="font-semibold text-foreground">Expected answer:</span>{" "}
-              {question.expectedAnswer}
-            </p>
-          )}
-        </div>
-      )}
-
       {question.explanation && (
         <p className="text-xs text-muted/80 leading-relaxed border-t border-border pt-2">
           💡 {question.explanation}
@@ -541,14 +543,6 @@ function QuizPopupInner({
     );
   }, [currentIndex]);
 
-  const handleVoiceAcknowledge = useCallback(() => {
-    setAnswers((prev) =>
-      prev.map((answer, index) =>
-        index === currentIndex ? { ...answer, voiceAcknowledged: true } : answer
-      )
-    );
-  }, [currentIndex]);
-
   const handleSubmit = useCallback(async () => {
     if (!currentQuestion) return;
     if (isCheckingAnswer) return;
@@ -581,9 +575,6 @@ function QuizPopupInner({
       }
     } else if (currentQuestion.type === "code") {
       isCorrect = isLikelyCorrectCode(currentAnswer.codeValue, currentQuestion);
-    } else {
-      isCorrect = true;
-      handleVoiceAcknowledge();
     }
 
     setAnswers((prev) =>
@@ -594,7 +585,7 @@ function QuizPopupInner({
       )
     );
     setPhase("reviewing");
-  }, [currentAnswer, currentIndex, currentQuestion, handleVoiceAcknowledge, isCheckingAnswer]);
+  }, [currentAnswer, currentIndex, currentQuestion, isCheckingAnswer]);
 
   const handleNext = useCallback(() => {
     const isLast = currentIndex === questions.length - 1;
@@ -632,7 +623,7 @@ function QuizPopupInner({
     currentAnswer.isRevealed ||
     isCheckingAnswer ||
     (currentQuestion?.type === "mcq" && currentAnswer.selectedIndex === null) ||
-    (currentQuestion?.type === "text" && currentAnswer.textValue.trim().length === 0) ||
+    (isOpenEndedQuestionType(currentQuestion?.type ?? "text") && currentAnswer.textValue.trim().length === 0) ||
     (currentQuestion?.type === "code" && currentAnswer.codeValue.trim().length === 0);
 
   const isLastQuestion = currentIndex === questions.length - 1;
@@ -697,10 +688,11 @@ function QuizPopupInner({
         {/* --- Modal panel --- */}
         <div
           ref={modalRef}
-          className="relative w-full sm:max-w-lg bg-surface border border-border rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+          className="relative flex w-full flex-col overflow-hidden border border-border bg-surface shadow-2xl rounded-t-2xl sm:rounded-2xl"
           style={{
             animation: "quiz-modal-in 0.4s cubic-bezier(0.22,1,0.36,1) forwards",
-            maxHeight: "90vh",
+            maxHeight: "calc(100dvh - 0.75rem)",
+            maxWidth: "min(48rem, calc(100vw - 0.75rem))",
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -777,7 +769,7 @@ function QuizPopupInner({
           {/* ----------------------------------------------------------------
               BODY (scrollable)
           ---------------------------------------------------------------- */}
-          <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 flex flex-col gap-5">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5 flex flex-col gap-4 sm:gap-5">
 
             {/* === PASSED PANEL === */}
             {phase === "passed" && (
@@ -886,21 +878,6 @@ function QuizPopupInner({
                   <p className="text-base sm:text-lg font-semibold text-white leading-7 tracking-tight">
                     {currentQuestion.question}
                   </p>
-                  {currentQuestion.type === "voice" && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled
-                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 opacity-80 cursor-not-allowed"
-                      >
-                        <span aria-hidden="true">🎙️</span>
-                        Voice input
-                      </button>
-                      <span className="rounded-full bg-warning/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-warning">
-                        Coming Soon
-                      </span>
-                    </div>
-                  )}
                 </div>
 
                 {currentQuestion.type === "mcq" && (
@@ -958,20 +935,30 @@ function QuizPopupInner({
                         Language: {currentQuestion.language}
                       </span>
                       <span className="rounded-full border border-border px-2 py-0.5">
-                        Mock editor
+                        Monaco Editor
                       </span>
                     </div>
-                    <textarea
-                      value={currentAnswer.codeValue}
-                      onChange={(e) => handleCodeChange(e.target.value)}
-                      disabled={currentAnswer.isRevealed}
-                      rows={8}
-                      spellCheck={false}
-                      className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3.5 text-[15px] font-mono leading-6 text-white placeholder:text-slate-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(108,92,231,0.18)] disabled:opacity-60"
-                      placeholder={currentQuestion.initialCode || "// Write your solution here"}
-                    />
+                    <div className="overflow-hidden rounded-2xl border border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
+                      <Editor
+                        height="320px"
+                        defaultLanguage={getMonacoLanguage(currentQuestion.language)}
+                        language={getMonacoLanguage(currentQuestion.language)}
+                        theme="vs-dark"
+                        value={currentAnswer.codeValue}
+                        onChange={(value) => handleCodeChange(value ?? "")}
+                        options={{
+                          minimap: { enabled: false },
+                          fontSize: 14,
+                          lineNumbers: "on",
+                          scrollBeyondLastLine: false,
+                          wordWrap: "on",
+                          automaticLayout: true,
+                          padding: { top: 12, bottom: 12 },
+                        }}
+                      />
+                    </div>
                     <p className="text-[11px] text-muted">
-                      This is a scaffolded editor for now. The execution sandbox can be added later.
+                      This is a code editor scaffold for now. Execution and linting can be added next.
                     </p>
                   </div>
                 )}
@@ -1022,13 +1009,13 @@ function QuizPopupInner({
           {/* ----------------------------------------------------------------
               FOOTER — actions
           ---------------------------------------------------------------- */}
-          <div className="shrink-0 border-t border-border px-5 py-4 flex gap-3">
+          <div className="shrink-0 border-t border-border px-4 py-4 sm:px-5 flex gap-3">
             {/* Answering phase: Submit */}
-            {phase === "answering" && (
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={isSubmitDisabled}
+                {phase === "answering" && (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isSubmitDisabled}
                 className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{
                   background: isSubmitDisabled
@@ -1038,13 +1025,9 @@ function QuizPopupInner({
                     ? "none"
                     : "0 4px 14px rgba(108,92,231,0.35)",
                 }}
-                >
-                {isCheckingAnswer
-                  ? "Checking..."
-                  : currentQuestion?.type === "voice"
-                  ? "Continue"
-                  : t("quiz.submitAnswer")}
-                </button>
+              >
+                {isCheckingAnswer ? "Checking..." : t("quiz.submitAnswer")}
+              </button>
             )}
 
             {/* Reviewing phase: Next / Finish */}

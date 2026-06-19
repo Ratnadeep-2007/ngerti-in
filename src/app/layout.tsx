@@ -23,7 +23,7 @@ export default function RootLayout({
         <ThemeProvider>
           <UILanguageProvider>
             <Navigation />
-            <main className="pt-24 min-h-screen">
+            <main className="min-h-screen w-full pt-24">
               {children}
             </main>
             <Footer />

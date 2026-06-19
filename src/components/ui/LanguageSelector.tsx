@@ -43,16 +43,15 @@ export default function LanguageSelector({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
       style={{ background: "rgba(15, 15, 19, 0.85)", backdropFilter: "blur(8px)" }}
       onClick={onClose}
     >
       <div
-        className="animate-slide-up w-full max-w-lg rounded-2xl border flex flex-col"
+        className="animate-slide-up flex w-full max-w-lg max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-2xl border"
         style={{
           background: "var(--surface)",
           borderColor: "var(--border)",
-          maxHeight: "80vh",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -127,7 +126,7 @@ export default function LanguageSelector({
         </div>
 
         {/* Language list */}
-        <div className="overflow-y-auto flex-1 p-2">
+        <div className="flex-1 overflow-y-auto p-2">
           {isSearching ? (
             searchResults.length > 0 ? (
               <div>

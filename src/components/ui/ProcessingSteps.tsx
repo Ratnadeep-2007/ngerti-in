@@ -133,11 +133,11 @@ export default function ProcessingSteps({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
       style={{ background: "rgba(15, 15, 19, 0.92)", backdropFilter: "blur(12px)" }}
     >
       <div
-        className="animate-slide-up w-full max-w-md rounded-2xl border p-8"
+        className="animate-slide-up flex w-full max-w-md max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-2xl border p-5 sm:p-8"
         style={{
           background: "var(--surface)",
           borderColor: "var(--border)",
@@ -173,7 +173,7 @@ export default function ProcessingSteps({
         </div>
 
         {/* Steps */}
-        <div className="space-y-3">
+        <div className="flex-1 space-y-3 overflow-y-auto pr-1">
           {steps.map((step, index) => {
             const isActive = index === currentStep && !error;
             const isDone = index < currentStep && !error;

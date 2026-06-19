@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateQuizzes, generateQuizzesForRange } from "@/lib/groq";
-import { TranscriptSegment } from "@/lib/types";
+import { generateQuizzes, generateQuizzesForRange } from "@/lib/gemini";
+import { TranscriptSegment, QuizDifficulty } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
-    const { transcript, maxBreakpoints, questionsPerBreakpoint, startTime, endTime } =
+    const { transcript, maxBreakpoints, questionsPerBreakpoint, startTime, endTime, difficulty } =
       (await request.json()) as {
         transcript: TranscriptSegment[];
         maxBreakpoints: number;
         questionsPerBreakpoint: number;
         startTime?: number;
         endTime?: number;
+        difficulty?: QuizDifficulty;
       };
 
     if (!transcript || !maxBreakpoints || !questionsPerBreakpoint) {
@@ -22,8 +23,8 @@ export async function POST(request: NextRequest) {
 
     const breakpoints =
       startTime !== undefined && endTime !== undefined
-        ? await generateQuizzesForRange(transcript, startTime, endTime, maxBreakpoints, questionsPerBreakpoint)
-        : await generateQuizzes(transcript, maxBreakpoints, questionsPerBreakpoint);
+        ? await generateQuizzesForRange(transcript, startTime, endTime, maxBreakpoints, questionsPerBreakpoint, difficulty)
+        : await generateQuizzes(transcript, maxBreakpoints, questionsPerBreakpoint, difficulty);
 
     return NextResponse.json({ breakpoints });
   } catch (error) {
