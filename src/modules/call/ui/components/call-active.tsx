@@ -459,9 +459,14 @@ export const CallActive = ({
     }
   };
 
+  // Filter out the virtual AI tutor participant from the local audio player if the user is driving the AI Tutor locally (to prevent double audio output/loopback)
+  const audioParticipants = isTutorEnabled && agentId
+    ? participants.filter((p) => p.userId !== agentId)
+    : participants;
+
   return (
     <div className="flex h-full text-white relative overflow-hidden">
-      <ParticipantsAudio participants={participants} />
+      <ParticipantsAudio participants={audioParticipants} />
       <div className={`flex flex-col justify-between p-4 flex-1 transition-all duration-300 ${showChat ? 'mr-[350px]' : ''}`}>
         {/* Hidden Video for Emotion Detection */}
         <video
