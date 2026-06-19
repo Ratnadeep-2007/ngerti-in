@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isRTL } from "@/lib/languages";
-import type { Breakpoint, QuizQuestion } from "@/lib/types";
+import type {
+  Breakpoint,
+  CodeQuestion,
+  QuizQuestion,
+  TextQuestion,
+  VoiceQuestion,
+} from "@/lib/types";
 import QuizOption from "./QuizOption";
 import { useTranslation } from "@/contexts/UILanguageContext";
 
@@ -24,6 +30,9 @@ interface QuizPopupProps {
 // Internal per-question answer state
 interface AnswerState {
   selectedIndex: number | null;
+  textValue: string;
+  codeValue: string;
+  voiceAcknowledged: boolean;
   isRevealed: boolean;
   isCorrect: boolean | null;
 }
@@ -37,9 +46,177 @@ type Phase = "answering" | "reviewing" | "passed" | "failed";
 function buildInitialAnswers(count: number): AnswerState[] {
   return Array.from({ length: count }, () => ({
     selectedIndex: null,
+    textValue: "",
+    codeValue: "",
+    voiceAcknowledged: false,
     isRevealed: false,
     isCorrect: null,
   }));
+}
+
+function getBreakpointQuestions(breakpoint: Breakpoint, isRetry: boolean): QuizQuestion[] {
+  if (breakpoint.questions?.length) return breakpoint.questions;
+  if (isRetry && breakpoint.retryQuestions?.length) return breakpoint.retryQuestions;
+  if (breakpoint.primaryQuestions?.length) return breakpoint.primaryQuestions;
+  return [];
+}
+
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+const TEXT_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "because",
+  "by",
+  "for",
+  "from",
+  "has",
+  "have",
+  "in",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "or",
+  "that",
+  "the",
+  "their",
+  "there",
+  "this",
+  "to",
+  "was",
+  "were",
+  "with",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "how",
+  "so",
+  "then",
+  "than",
+  "into",
+  "about",
+  "your",
+  "you",
+  "they",
+  "them",
+  "we",
+  "he",
+  "she",
+  "i",
+  "new",
+  "result",
+  "results",
+  "answer",
+  "question",
+  "combining",
+  "combine",
+]);
+
+function tokenizeMeaningful(value: string): string[] {
+  return normalizeText(value)
+    .match(/[a-z0-9_+-]{3,}/g)
+    ?.filter((token) => !TEXT_STOPWORDS.has(token)) ?? [];
+}
+
+function buildReferenceTokens(question: TextQuestion | VoiceQuestion): string[] {
+  const tokens = new Set<string>();
+
+  for (const token of tokenizeMeaningful(question.question)) tokens.add(token);
+  if (question.expectedAnswer) {
+    for (const token of tokenizeMeaningful(question.expectedAnswer)) tokens.add(token);
+  }
+  if (question.explanation) {
+    for (const token of tokenizeMeaningful(question.explanation)) tokens.add(token);
+  }
+  if ("acceptedKeywords" in question) {
+    for (const keyword of question.acceptedKeywords ?? []) {
+      for (const token of tokenizeMeaningful(keyword)) tokens.add(token);
+    }
+  }
+
+  return [...tokens];
+}
+
+function overlapScore(answerTokens: string[], referenceTokens: string[]): number {
+  if (referenceTokens.length === 0) return 0;
+  const reference = new Set(referenceTokens);
+  const shared = answerTokens.filter((token) => reference.has(token));
+  return shared.length / reference.size;
+}
+
+function isLikelyCorrectText(answer: string, question: TextQuestion | VoiceQuestion): boolean {
+  const normalizedAnswer = normalizeText(answer);
+  if (!normalizedAnswer) return false;
+
+  if (question.expectedAnswer) {
+    const expected = normalizeText(question.expectedAnswer);
+    if (
+      normalizedAnswer === expected ||
+      normalizedAnswer.includes(expected) ||
+      expected.includes(normalizedAnswer)
+    ) {
+      return true;
+    }
+  }
+
+  const answerTokens = tokenizeMeaningful(answer);
+  if (answerTokens.length === 0) return false;
+
+  const referenceTokens = buildReferenceTokens(question);
+  if (referenceTokens.length > 0) {
+    const score = overlapScore(answerTokens, referenceTokens);
+    const sharedTokens = answerTokens.filter((token) => referenceTokens.includes(token));
+
+    if (score >= 0.5 && sharedTokens.length >= 2) {
+      return true;
+    }
+
+    if (score >= 0.35 && sharedTokens.length >= 3) {
+      return true;
+    }
+
+    if (question.expectedAnswer) {
+      const expectedTokens = tokenizeMeaningful(question.expectedAnswer);
+      const expectedScore = overlapScore(answerTokens, expectedTokens);
+      if (expectedScore >= 0.6 && expectedTokens.length <= 4) {
+        return true;
+      }
+    }
+  }
+
+  if ("acceptedKeywords" in question && question.acceptedKeywords?.length) {
+    const keywordHits = question.acceptedKeywords.filter((keyword) =>
+      normalizedAnswer.includes(normalizeText(keyword))
+    );
+    if (keywordHits.length === question.acceptedKeywords.length) return true;
+    if (keywordHits.length >= Math.max(1, Math.ceil(question.acceptedKeywords.length / 2))) return true;
+  }
+
+  return Boolean(question.expectedAnswer) ? false : answerTokens.length >= 3;
+}
+
+function isLikelyCorrectCode(answer: string, question: CodeQuestion): boolean {
+  const normalizedAnswer = normalizeText(answer);
+  if (!normalizedAnswer) return false;
+  if (question.solution) {
+    return normalizeText(question.solution) === normalizedAnswer;
+  }
+  if (question.expectedOutput) {
+    return normalizedAnswer.includes(normalizeText(question.expectedOutput));
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +260,19 @@ function SuccessCheck() {
       />
     </svg>
   );
+}
+
+export default function QuizPopup(props: QuizPopupProps) {
+  const resetKey = [
+    props.breakpoint.timestamp,
+    props.breakpoint.topic,
+    props.isRetry ? "retry" : "primary",
+    props.breakpoint.questions?.map((q) => q.type).join(",") ?? "",
+    props.breakpoint.primaryQuestions.length,
+    props.breakpoint.retryQuestions.length,
+  ].join("|");
+
+  return <QuizPopupInner key={resetKey} {...props} />;
 }
 
 /** Progress dots row showing quiz questions completion */
@@ -141,9 +331,109 @@ function ProgressDots({
 // Main component
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// SolutionSummary sub-component
-// ---------------------------------------------------------------------------
+function ReviewCard({
+  question,
+  answer,
+}: {
+  question: QuizQuestion;
+  answer: AnswerState;
+}) {
+  return (
+    <div
+      className="rounded-xl border border-border px-4 py-3.5 flex flex-col gap-2.5"
+      style={{ background: "rgba(37,37,54,0.7)" }}
+    >
+      <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-foreground leading-relaxed">
+          <span className="text-muted mr-1">◆</span>
+          {question.question}
+        </p>
+        <span className="text-[10px] uppercase tracking-wider rounded-full px-2 py-0.5 border border-border text-muted">
+          {question.type}
+        </span>
+      </div>
+
+      {question.type === "mcq" && (
+        <div className="flex flex-col gap-1.5">
+          {question.options.map((opt, oi) => {
+            const isCorrectOpt = oi === question.correct;
+            const isUserPick = oi === answer.selectedIndex;
+            const isWrongPick = isUserPick && !isCorrectOpt;
+            if (!isCorrectOpt && !isWrongPick) return null;
+            return (
+              <div
+                key={oi}
+                className="flex items-start gap-2 text-xs"
+                style={{
+                  color: isCorrectOpt ? "var(--success)" : "var(--error)",
+                }}
+              >
+                <span className="shrink-0 mt-0.5 font-bold">
+                  {isCorrectOpt ? "✓" : "✗"}
+                </span>
+                <span className="leading-relaxed">{opt}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {question.type === "text" && (
+        <div className="flex flex-col gap-1 text-xs text-muted/90">
+          <p>
+            <span className="font-semibold text-foreground">Your answer:</span>{" "}
+            {answer.textValue || "No answer"}
+          </p>
+          {question.expectedAnswer && (
+            <p>
+              <span className="font-semibold text-foreground">Expected answer:</span>{" "}
+              {question.expectedAnswer}
+            </p>
+          )}
+        </div>
+      )}
+
+      {question.type === "code" && (
+        <div className="flex flex-col gap-1 text-xs text-muted/90">
+          <p>
+            <span className="font-semibold text-foreground">Language:</span>{" "}
+            {question.language}
+          </p>
+          <pre className="rounded-lg border border-border bg-black/20 p-3 overflow-x-auto text-[11px] leading-relaxed">
+            <code>{answer.codeValue || question.initialCode}</code>
+          </pre>
+          {question.solution && (
+            <p>
+              <span className="font-semibold text-foreground">Expected answer:</span>{" "}
+              {question.solution}
+            </p>
+          )}
+        </div>
+      )}
+
+      {question.type === "voice" && (
+        <div className="flex flex-col gap-1 text-xs text-muted/90">
+          <p>
+            <span className="font-semibold text-foreground">Mocked:</span>{" "}
+            Coming soon
+          </p>
+          {question.expectedAnswer && (
+            <p>
+              <span className="font-semibold text-foreground">Expected answer:</span>{" "}
+              {question.expectedAnswer}
+            </p>
+          )}
+        </div>
+      )}
+
+      {question.explanation && (
+        <p className="text-xs text-muted/80 leading-relaxed border-t border-border pt-2">
+          💡 {question.explanation}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function SolutionSummary({
   questions,
@@ -158,52 +448,9 @@ function SolutionSummary({
       <p className="text-xs font-semibold text-muted uppercase tracking-wider text-center">
         {t("quiz.reviewAnswers")}
       </p>
-      {questions.map((q, i) => {
-        const a = answers[i];
-        const userIndex = a?.selectedIndex ?? null;
-        return (
-          <div
-            key={i}
-            className="rounded-xl border border-border px-4 py-3.5 flex flex-col gap-2.5"
-            style={{ background: "rgba(37,37,54,0.7)" }}
-          >
-            {/* Question */}
-            <p className="text-xs font-semibold text-foreground leading-relaxed">
-              <span className="text-muted mr-1">◆</span>
-              {q.question}
-            </p>
-            {/* Options */}
-            <div className="flex flex-col gap-1.5">
-              {q.options.map((opt, oi) => {
-                const isCorrectOpt = oi === q.correct;
-                const isUserPick = oi === userIndex;
-                const isWrongPick = isUserPick && !isCorrectOpt;
-                if (!isCorrectOpt && !isWrongPick) return null;
-                return (
-                  <div
-                    key={oi}
-                    className="flex items-start gap-2 text-xs"
-                    style={{
-                      color: isCorrectOpt ? "var(--success)" : "var(--error)",
-                    }}
-                  >
-                    <span className="shrink-0 mt-0.5 font-bold">
-                      {isCorrectOpt ? "✓" : "✗"}
-                    </span>
-                    <span className="leading-relaxed">{opt}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Explanation */}
-            {q.explanation && (
-              <p className="text-xs text-muted/80 leading-relaxed border-t border-border pt-2">
-                💡 {q.explanation}
-              </p>
-            )}
-          </div>
-        );
-      })}
+      {questions.map((question, i) => (
+        <ReviewCard key={i} question={question} answer={answers[i]} />
+      ))}
     </div>
   );
 }
@@ -212,7 +459,7 @@ function SolutionSummary({
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function QuizPopup({
+function QuizPopupInner({
   breakpoint,
   breakpointIndex,
   totalBreakpoints,
@@ -224,16 +471,24 @@ export default function QuizPopup({
 }: QuizPopupProps) {
   const rtl = isRTL(targetLocale);
   const { t } = useTranslation();
-  const questions: QuizQuestion[] = isRetry && breakpoint.retryQuestions?.length > 0
-    ? breakpoint.retryQuestions
-    : breakpoint.primaryQuestions;
+  const questions: QuizQuestion[] = getBreakpointQuestions(breakpoint, isRetry);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<AnswerState[]>(() =>
-    buildInitialAnswers(questions.length)
+    buildInitialAnswers(questions.length).map((answer, index) => {
+      const question = questions[index];
+      if (!question) return answer;
+
+      if (question.type === "code") {
+        return { ...answer, codeValue: question.initialCode || "" };
+      }
+
+      return answer;
+    })
   );
   const [phase, setPhase] = useState<Phase>("answering");
   const [scoreCount, setScoreCount] = useState<{ correct: number; total: number } | null>(null);
+  const [isCheckingAnswer, setIsCheckingAnswer] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const firstFocusRef = useRef<HTMLButtonElement>(null);
 
@@ -244,14 +499,6 @@ export default function QuizPopup({
   useEffect(() => {
     firstFocusRef.current?.focus();
   }, []);
-
-  // Reset state if breakpoint or retry flag changes
-  useEffect(() => {
-    setCurrentIndex(0);
-    setAnswers(buildInitialAnswers(questions.length));
-    setPhase("answering");
-    setScoreCount(null);
-  }, [breakpoint.topic, breakpoint.timestamp, isRetry, questions.length]);
 
   // Close on Escape
   useEffect(() => {
@@ -278,11 +525,66 @@ export default function QuizPopup({
     [answers, currentIndex]
   );
 
-  const handleSubmit = useCallback(() => {
-    if (currentAnswer.selectedIndex === null) return;
+  const handleTextChange = useCallback((value: string) => {
+    setAnswers((prev) =>
+      prev.map((answer, index) =>
+        index === currentIndex ? { ...answer, textValue: value } : answer
+      )
+    );
+  }, [currentIndex]);
 
-    const isCorrect =
-      currentAnswer.selectedIndex === currentQuestion.correct;
+  const handleCodeChange = useCallback((value: string) => {
+    setAnswers((prev) =>
+      prev.map((answer, index) =>
+        index === currentIndex ? { ...answer, codeValue: value } : answer
+      )
+    );
+  }, [currentIndex]);
+
+  const handleVoiceAcknowledge = useCallback(() => {
+    setAnswers((prev) =>
+      prev.map((answer, index) =>
+        index === currentIndex ? { ...answer, voiceAcknowledged: true } : answer
+      )
+    );
+  }, [currentIndex]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!currentQuestion) return;
+    if (isCheckingAnswer) return;
+    let isCorrect = false;
+
+    if (currentQuestion.type === "mcq") {
+      if (currentAnswer.selectedIndex === null) return;
+      isCorrect = currentAnswer.selectedIndex === currentQuestion.correct;
+    } else if (currentQuestion.type === "text") {
+      setIsCheckingAnswer(true);
+      try {
+        const response = await fetch("/api/grade-answer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: currentQuestion,
+            answer: currentAnswer.textValue,
+          }),
+        });
+        if (response.ok) {
+          const result = (await response.json()) as { correct?: boolean };
+          isCorrect = Boolean(result.correct);
+        } else {
+          isCorrect = isLikelyCorrectText(currentAnswer.textValue, currentQuestion);
+        }
+      } catch {
+        isCorrect = isLikelyCorrectText(currentAnswer.textValue, currentQuestion);
+      } finally {
+        setIsCheckingAnswer(false);
+      }
+    } else if (currentQuestion.type === "code") {
+      isCorrect = isLikelyCorrectCode(currentAnswer.codeValue, currentQuestion);
+    } else {
+      isCorrect = true;
+      handleVoiceAcknowledge();
+    }
 
     setAnswers((prev) =>
       prev.map((a, i) =>
@@ -292,7 +594,7 @@ export default function QuizPopup({
       )
     );
     setPhase("reviewing");
-  }, [currentAnswer, currentIndex, currentQuestion.correct]);
+  }, [currentAnswer, currentIndex, currentQuestion, handleVoiceAcknowledge, isCheckingAnswer]);
 
   const handleNext = useCallback(() => {
     const isLast = currentIndex === questions.length - 1;
@@ -316,7 +618,7 @@ export default function QuizPopup({
       setCurrentIndex((prev) => prev + 1);
       setPhase("answering");
     }
-  }, [answers, currentIndex, onPass, questions.length]);
+  }, [answers, currentIndex, isFinalQuiz, onPass, questions.length]);
 
   const handleTryAgain = useCallback(() => {
     onClose(); // Parent will re-open with isRetry=true
@@ -327,7 +629,11 @@ export default function QuizPopup({
   // ---------------------------------------------------------------------------
 
   const isSubmitDisabled =
-    currentAnswer.selectedIndex === null || currentAnswer.isRevealed;
+    currentAnswer.isRevealed ||
+    isCheckingAnswer ||
+    (currentQuestion?.type === "mcq" && currentAnswer.selectedIndex === null) ||
+    (currentQuestion?.type === "text" && currentAnswer.textValue.trim().length === 0) ||
+    (currentQuestion?.type === "code" && currentAnswer.codeValue.trim().length === 0);
 
   const isLastQuestion = currentIndex === questions.length - 1;
 
@@ -571,47 +877,110 @@ export default function QuizPopup({
 
                 {/* Question text */}
                 <div
-                  className="rounded-xl border border-border bg-surface-light px-4 py-3.5"
+                  className="rounded-2xl border border-white/10 bg-[#0f1724]/95 px-4 py-4 shadow-[0_8px_24px_rgba(0,0,0,0.22)]"
                   style={{
                     background:
-                      "linear-gradient(135deg, rgba(37,37,54,0.8) 0%, rgba(26,26,36,0.9) 100%)",
+                      "linear-gradient(135deg, rgba(15,23,36,0.98) 0%, rgba(20,26,40,0.94) 100%)",
                   }}
                 >
-                  <p className="text-sm font-semibold text-foreground leading-relaxed">
+                  <p className="text-base sm:text-lg font-semibold text-white leading-7 tracking-tight">
                     {currentQuestion.question}
                   </p>
+                  {currentQuestion.type === "voice" && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-slate-200 opacity-80 cursor-not-allowed"
+                      >
+                        <span aria-hidden="true">🎙️</span>
+                        Voice input
+                      </button>
+                      <span className="rounded-full bg-warning/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-warning">
+                        Coming Soon
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Options */}
-                <div className="flex flex-col gap-2.5">
-                  {currentQuestion.options.map((option, i) => {
-                    const isCorrectOption =
-                      currentAnswer.isRevealed &&
-                      i === currentQuestion.correct;
-                    const isIncorrectSelected =
-                      currentAnswer.isRevealed &&
-                      currentAnswer.selectedIndex === i &&
-                      i !== currentQuestion.correct;
+                {currentQuestion.type === "mcq" && (
+                  <div className="flex flex-col gap-2.5">
+                    {currentQuestion.options.map((option, i) => {
+                      const isCorrectOption =
+                        currentAnswer.isRevealed &&
+                        i === currentQuestion.correct;
+                      const isIncorrectSelected =
+                        currentAnswer.isRevealed &&
+                        currentAnswer.selectedIndex === i &&
+                        i !== currentQuestion.correct;
 
-                    return (
-                      <QuizOption
-                        key={i}
-                        text={option}
-                        index={i}
-                        isSelected={currentAnswer.selectedIndex === i}
-                        isCorrect={
-                          isCorrectOption
-                            ? true
-                            : isIncorrectSelected
-                            ? false
-                            : null
-                        }
-                        isRevealed={currentAnswer.isRevealed}
-                        onSelect={handleSelect}
-                      />
-                    );
-                  })}
-                </div>
+                      return (
+                        <QuizOption
+                          key={i}
+                          text={option}
+                          index={i}
+                          isSelected={currentAnswer.selectedIndex === i}
+                          isCorrect={
+                            isCorrectOption
+                              ? true
+                              : isIncorrectSelected
+                              ? false
+                              : null
+                          }
+                          isRevealed={currentAnswer.isRevealed}
+                          onSelect={handleSelect}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {currentQuestion.type === "text" && (
+                  <div className="flex flex-col gap-2.5">
+                    <textarea
+                      value={currentAnswer.textValue}
+                      onChange={(e) => handleTextChange(e.target.value)}
+                      disabled={currentAnswer.isRevealed}
+                      rows={5}
+                      placeholder={currentQuestion.placeholder || "Type your answer here..."}
+                      className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-[15px] leading-6 text-white placeholder:text-slate-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(108,92,231,0.18)] disabled:opacity-60"
+                    />
+                    <p className="text-[11px] text-muted">
+                      Short answers are checked against the expected response or key ideas.
+                    </p>
+                  </div>
+                )}
+
+                {currentQuestion.type === "code" && (
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between text-xs text-muted">
+                      <span className="font-semibold uppercase tracking-wider">
+                        Language: {currentQuestion.language}
+                      </span>
+                      <span className="rounded-full border border-border px-2 py-0.5">
+                        Mock editor
+                      </span>
+                    </div>
+                    <textarea
+                      value={currentAnswer.codeValue}
+                      onChange={(e) => handleCodeChange(e.target.value)}
+                      disabled={currentAnswer.isRevealed}
+                      rows={8}
+                      spellCheck={false}
+                      className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3.5 text-[15px] font-mono leading-6 text-white placeholder:text-slate-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(108,92,231,0.18)] disabled:opacity-60"
+                      placeholder={currentQuestion.initialCode || "// Write your solution here"}
+                    />
+                    <p className="text-[11px] text-muted">
+                      This is a scaffolded editor for now. The execution sandbox can be added later.
+                    </p>
+                  </div>
+                )}
+
+                {isCheckingAnswer && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+                    Checking your answer...
+                  </div>
+                )}
 
                 {/* Explanation (shown after submit) */}
                 {currentAnswer.isRevealed && currentQuestion.explanation && (
@@ -656,11 +1025,11 @@ export default function QuizPopup({
           <div className="shrink-0 border-t border-border px-5 py-4 flex gap-3">
             {/* Answering phase: Submit */}
             {phase === "answering" && (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isSubmitDisabled}
-                className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isSubmitDisabled}
+                className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{
                   background: isSubmitDisabled
                     ? "var(--surface-light)"
@@ -669,9 +1038,13 @@ export default function QuizPopup({
                     ? "none"
                     : "0 4px 14px rgba(108,92,231,0.35)",
                 }}
-              >
-                {t("quiz.submitAnswer")}
-              </button>
+                >
+                {isCheckingAnswer
+                  ? "Checking..."
+                  : currentQuestion?.type === "voice"
+                  ? "Continue"
+                  : t("quiz.submitAnswer")}
+                </button>
             )}
 
             {/* Reviewing phase: Next / Finish */}
@@ -679,7 +1052,7 @@ export default function QuizPopup({
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200"
+                className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200"
                 style={{
                   background: currentAnswer.isCorrect
                     ? "linear-gradient(135deg, var(--success) 0%, #00d4a8 100%)"
@@ -698,7 +1071,7 @@ export default function QuizPopup({
               <button
                 type="button"
                 onClick={onPass}
-                className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200"
+                className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200"
                 style={{
                   background:
                     "linear-gradient(135deg, var(--success) 0%, #00d4a8 100%)",

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { COMPANIONS } from "@/lib/companions";
 import { getAllLanguages } from "@/lib/languages";
-import type { LearningMode } from "@/lib/types";
+import type { LearningMode, QuizDifficulty } from "@/lib/types";
 import type {
   TranscriptSegment,
   VideoMetadata,
@@ -25,7 +25,7 @@ const COMPANION_EMOJIS: Record<string, string> = {
   robot: "🤖",
 };
 
-const DEFAULT_LANGUAGE = "es";
+const DEFAULT_LANGUAGE = "en-US";
 
 export default function HomePage() {
   return (
@@ -39,6 +39,7 @@ function HomePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
+  const translateAny = t as unknown as (key: string) => string;
 
   // Form state
   const [url, setUrl] = useState("");
@@ -52,6 +53,7 @@ function HomePageInner() {
   }, [searchParams]);
   const [targetLocale, setTargetLocale] = useState(DEFAULT_LANGUAGE);
   const [mode, setMode] = useState<LearningMode>("jolly");
+  const [quizDifficulty, setQuizDifficulty] = useState<QuizDifficulty>("medium");
   const [companionId, setCompanionId] = useState<string>(COMPANIONS[0].id);
   const selectedCompanion = COMPANIONS.find(c => c.id === companionId) || COMPANIONS[0];
   const [userName, setUserName] = useState("");
@@ -63,7 +65,7 @@ function HomePageInner() {
     if (mode === "jolly" && selectedCompanion?.description) {
       setTypedLore(""); // reset
       let i = 0;
-      const text = t(selectedCompanion.description as any);
+      const text = translateAny(selectedCompanion.description);
       const interval = setInterval(() => {
         setTypedLore(text.slice(0, i + 1));
         i++;
@@ -117,7 +119,7 @@ function HomePageInner() {
       const extractRes = await fetch("/api/extract-transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: url.trim(), difficulty: quizDifficulty }),
       });
 
       if (!extractRes.ok) {
@@ -206,6 +208,7 @@ function HomePageInner() {
         translatedContent: translateData.translatedContent,
         originalBreakpoints: quizzesData.breakpoints,
         quizFrequency: extractData.quizFrequency,
+        quizDifficulty,
         userName: userName.trim(),
         rawTranscript: extractData.transcript,
         quizzesGeneratedUpTo: initialEnd,
@@ -399,6 +402,42 @@ function HomePageInner() {
               </div>
             </div>
 
+            {/* Difficulty Selector */}
+            <div>
+              <label
+                className="mb-2 block text-sm font-bold"
+                style={{ color: "var(--foreground)" }}
+              >
+                Quiz difficulty
+              </label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <DifficultyButton
+                  value="easy"
+                  current={quizDifficulty}
+                  onClick={() => setQuizDifficulty("easy")}
+                  title="Easy"
+                  cadence="1 question every 10 minutes"
+                  description="Slower pace with simpler recall and fewer checkpoints."
+                />
+                <DifficultyButton
+                  value="medium"
+                  current={quizDifficulty}
+                  onClick={() => setQuizDifficulty("medium")}
+                  title="Medium"
+                  cadence="1 question every 5 minutes"
+                  description="Balanced pace with concept checks and mixed formats."
+                />
+                <DifficultyButton
+                  value="hard"
+                  current={quizDifficulty}
+                  onClick={() => setQuizDifficulty("hard")}
+                  title="Hard"
+                  cadence="1 question every 3 minutes"
+                  description="Fast pace with tougher, more frequent checkpoints."
+                />
+              </div>
+            </div>
+
             {/* Companion Picker — Jolly only */}
             {mode === "jolly" && (
               <div className="animate-fade-in space-y-3">
@@ -435,7 +474,7 @@ function HomePageInner() {
                           className="text-sm font-bold"
                           style={{ color: isSelected ? "var(--primary)" : "var(--muted)" }}
                         >
-                          {t(companion.name as any).split(',')[0]}
+                          {translateAny(companion.name).split(",")[0]}
                         </span>
                       </button>
                     );
@@ -458,7 +497,7 @@ function HomePageInner() {
                   </div>
                   <div className="col-span-2 flex flex-col justify-center h-full min-h-[8rem]">
                     <h3 className="font-extrabold text-2xl mb-1" style={{ color: "var(--primary)" }}>
-                      {t(selectedCompanion.name as any)}
+                      {translateAny(selectedCompanion.name)}
                     </h3>
                     <p className="text-lg mt-2 flex-grow" style={{ color: "var(--foreground)", minHeight: "6rem", lineHeight: "1.4" }}>
                       {typedLore}
@@ -653,6 +692,63 @@ function ModeButton({ value, current, onClick, icon, label, description }: ModeB
         className="text-sm leading-snug mt-1"
         style={{ color: isSelected ? "var(--muted)" : "var(--muted)" }}
       >
+        {description}
+      </span>
+    </button>
+  );
+}
+
+interface DifficultyButtonProps {
+  value: QuizDifficulty;
+  current: QuizDifficulty;
+  onClick: () => void;
+  title: string;
+  cadence: string;
+  description: string;
+}
+
+function DifficultyButton({
+  value,
+  current,
+  onClick,
+  title,
+  cadence,
+  description,
+}: DifficultyButtonProps) {
+  const isSelected = value === current;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-start gap-1 rounded-lg px-4 py-3 text-left transition-all pixel-border"
+      style={{
+        background: isSelected ? "var(--surface)" : "var(--surface-light)",
+        color: "var(--foreground)",
+        borderColor: isSelected ? "var(--primary)" : "var(--border)",
+        boxShadow: isSelected ? "0 0 0 1px rgba(108,92,231,0.2)" : "none",
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="text-lg font-bold"
+          style={{ color: isSelected ? "var(--primary)" : "var(--foreground)" }}
+        >
+          {title}
+        </span>
+        {isSelected && (
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            style={{ background: "rgba(108,92,231,0.12)", color: "var(--primary)" }}
+          >
+            Selected
+          </span>
+        )}
+      </div>
+      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted)" }}>
+        {cadence}
+      </span>
+      <span className="text-sm leading-snug" style={{ color: "var(--muted)" }}>
         {description}
       </span>
     </button>

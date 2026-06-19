@@ -5,6 +5,11 @@ import {
   CompanionDialogue,
   CertificateLabels,
   TranslatedContent,
+  QuizQuestion,
+  MCQQuestion,
+  TextQuestion,
+  CodeQuestion,
+  VoiceQuestion,
 } from "./types";
 
 function getEngine() {
@@ -12,6 +17,11 @@ function getEngine() {
     apiKey: process.env.LINGODOTDEV_API_KEY!,
     ...(process.env.LINGODOTDEV_ENGINE_ID && { engineId: process.env.LINGODOTDEV_ENGINE_ID }),
   });
+}
+
+function pickTranslated(translated: string | undefined, fallback: string): string {
+  const value = typeof translated === "string" ? translated.trim() : "";
+  return value.length > 0 ? value : fallback;
 }
 
 export async function detectLocale(text: string): Promise<string> {
@@ -68,61 +78,105 @@ export async function translateBreakpoints(
   if (breakpoints.length === 0) return [];
   const engine = getEngine();
 
-  const flatStrings: string[] = [];
-  breakpoints.forEach((bp) => {
-    flatStrings.push(bp.topic);
-    bp.primaryQuestions.forEach((q) => {
-      flatStrings.push(q.question);
-      flatStrings.push(q.explanation || "");
-      q.options.forEach(opt => flatStrings.push(opt));
-    });
-    bp.retryQuestions.forEach((q) => {
-      flatStrings.push(q.question);
-      flatStrings.push(q.explanation || "");
-      q.options.forEach(opt => flatStrings.push(opt));
-    });
-  });
-
-  if (flatStrings.length === 0) return breakpoints;
-
-  // Chunking to avoid payload too large errors
-  const chunkSize = 50;
-  const PARALLEL_BATCH = 3;
-  const translatedStrings: string[] = [];
-  const chunks: string[][] = [];
-  for (let i = 0; i < flatStrings.length; i += chunkSize) {
-    chunks.push(flatStrings.slice(i, i + chunkSize));
+  async function translateQuestion(question: QuizQuestion): Promise<QuizQuestion> {
+    switch (question.type) {
+      case "mcq": {
+        const translated = await engine.localizeStringArray(
+          [question.question, question.explanation || "", ...question.options],
+          { sourceLocale, targetLocale }
+        );
+        const [translatedQuestion, translatedExplanation, ...translatedOptions] = translated;
+        const normalized: MCQQuestion = {
+          ...question,
+          question: pickTranslated(translatedQuestion, question.question),
+          explanation: pickTranslated(translatedExplanation, question.explanation ?? ""),
+          options: [
+            pickTranslated(translatedOptions[0], question.options[0]),
+            pickTranslated(translatedOptions[1], question.options[1]),
+            pickTranslated(translatedOptions[2], question.options[2]),
+            pickTranslated(translatedOptions[3], question.options[3]),
+          ],
+        };
+        return normalized;
+      }
+      case "text": {
+        const payload = [
+          question.question,
+          question.explanation || "",
+          question.expectedAnswer || "",
+          question.placeholder || "",
+          ...(question.acceptedKeywords || []),
+        ];
+        const translated = await engine.localizeStringArray(payload, { sourceLocale, targetLocale });
+        const [translatedQuestion, translatedExplanation, translatedExpectedAnswer, translatedPlaceholder, ...translatedKeywords] = translated;
+        const normalized: TextQuestion = {
+          ...question,
+          question: pickTranslated(translatedQuestion, question.question),
+          explanation: pickTranslated(translatedExplanation, question.explanation ?? ""),
+          expectedAnswer: pickTranslated(translatedExpectedAnswer, question.expectedAnswer ?? ""),
+          placeholder: pickTranslated(translatedPlaceholder, question.placeholder ?? ""),
+          acceptedKeywords: translatedKeywords.length > 0 ? translatedKeywords : question.acceptedKeywords,
+        };
+        return normalized;
+      }
+      case "code": {
+        const translated = await engine.localizeStringArray(
+          [question.question, question.explanation || ""],
+          { sourceLocale, targetLocale }
+        );
+        const [translatedQuestion, translatedExplanation] = translated;
+        const normalized: CodeQuestion = {
+          ...question,
+          question: pickTranslated(translatedQuestion, question.question),
+          explanation: pickTranslated(translatedExplanation, question.explanation ?? ""),
+        };
+        return normalized;
+      }
+      case "voice": {
+        const payload = [
+          question.question,
+          question.explanation || "",
+          question.expectedAnswer || "",
+          question.note || "",
+        ];
+        const translated = await engine.localizeStringArray(payload, { sourceLocale, targetLocale });
+        const [translatedQuestion, translatedExplanation, translatedExpectedAnswer, translatedNote] = translated;
+        const normalized: VoiceQuestion = {
+          ...question,
+          question: pickTranslated(translatedQuestion, question.question),
+          explanation: pickTranslated(translatedExplanation, question.explanation ?? ""),
+          expectedAnswer: pickTranslated(translatedExpectedAnswer, question.expectedAnswer ?? ""),
+          note: pickTranslated(translatedNote, question.note ?? ""),
+        };
+        return normalized;
+      }
+    }
   }
 
-  for (let i = 0; i < chunks.length; i += PARALLEL_BATCH) {
-    const batch = chunks.slice(i, i + PARALLEL_BATCH);
-    const results = await Promise.all(
-      batch.map(chunk => engine.localizeStringArray(chunk, { sourceLocale, targetLocale }))
-    );
-    results.forEach(r => translatedStrings.push(...r));
-  }
+  return Promise.all(
+    breakpoints.map(async (bp) => {
+      const mixedQuestions = bp.questions.length > 0
+        ? bp.questions
+        : [...bp.primaryQuestions, ...bp.retryQuestions];
 
-  let ptr = 0;
-  // Reconstruct breakpoints from translated flat array
-  return breakpoints.map((bp) => {
-    const topic = translatedStrings[ptr++];
-    
-    const primaryQuestions = bp.primaryQuestions.map((q) => {
-      const question = translatedStrings[ptr++];
-      const explanation = translatedStrings[ptr++];
-      const options = q.options.map(() => translatedStrings[ptr++]);
-      return { ...q, question, explanation, options };
-    });
-    
-    const retryQuestions = bp.retryQuestions.map((q) => {
-      const question = translatedStrings[ptr++];
-      const explanation = translatedStrings[ptr++];
-      const options = q.options.map(() => translatedStrings[ptr++]);
-      return { ...q, question, explanation, options };
-    });
-    
-    return { ...bp, topic, primaryQuestions, retryQuestions };
-  });
+      const translatedQuestions = await Promise.all(
+        mixedQuestions.map((question) => translateQuestion(question))
+      );
+      const primaryQuestions = translatedQuestions.filter(
+        (question): question is MCQQuestion => question.type === "mcq"
+      );
+
+      const topicTranslation = await engine.localizeText(bp.topic, { sourceLocale, targetLocale });
+
+      return {
+        ...bp,
+        topic: pickTranslated(topicTranslation, bp.topic),
+        questions: translatedQuestions,
+        primaryQuestions,
+        retryQuestions: primaryQuestions,
+      };
+    })
+  );
 }
 
 export async function translateCompanionDialogue(

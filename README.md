@@ -185,12 +185,22 @@ npm install
 
 ### Environment Variables
 
-Create a `.env.local` file in the root directory:
+Create a `.env.local` file in the root directory with these values:
 
 ```env
 GROQ_API_KEY=your_groq_api_key
 LINGODOTDEV_API_KEY=your_lingodotdev_api_key
+LINGODOTDEV_ENGINE_ID=your_lingodotdev_engine_id
 ```
+
+Lingo.dev uses both values:
+
+- `LINGODOTDEV_API_KEY` authenticates the SDK
+- `LINGODOTDEV_ENGINE_ID` selects the translation engine for this project
+
+If you are starting fresh, create the key and engine in your Lingo.dev account, then paste them into `.env.local` or `.env`.
+
+The app reads `LINGODOTDEV_ENGINE_ID` automatically when it is present, and otherwise uses the SDK's default engine selection.
 
 ### Run
 

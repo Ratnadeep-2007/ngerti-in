@@ -1,21 +1,21 @@
-import { QuizFrequency } from "./types";
+import { QuizDifficulty, QuizFrequency } from "./types";
 
-export function calculateQuizFrequency(durationSeconds: number): QuizFrequency {
+const DIFFICULTY_CONFIG: Record<QuizDifficulty, { intervalMinutes: number; questionsPerBreakpoint: number }> = {
+  easy: { intervalMinutes: 10, questionsPerBreakpoint: 1 },
+  medium: { intervalMinutes: 5, questionsPerBreakpoint: 2 },
+  hard: { intervalMinutes: 3, questionsPerBreakpoint: 3 },
+};
+
+export function calculateQuizFrequency(
+  durationSeconds: number,
+  difficulty: QuizDifficulty = "medium"
+): QuizFrequency {
   const minutes = durationSeconds / 60;
+  const config = DIFFICULTY_CONFIG[difficulty];
+  const maxBreakpoints = Math.max(1, Math.floor(minutes / config.intervalMinutes));
 
-  if (minutes < 10) {
-    return { maxBreakpoints: 2, questionsPerBreakpoint: 2 };
-  } else if (minutes <= 30) {
-    const breakpoints = Math.round(3 + ((minutes - 10) / 20));
-    return { maxBreakpoints: Math.min(breakpoints, 4), questionsPerBreakpoint: 2 };
-  } else if (minutes <= 60) {
-    const breakpoints = Math.round(4 + ((minutes - 30) / 15));
-    return { maxBreakpoints: Math.min(breakpoints, 6), questionsPerBreakpoint: 3 };
-  } else if (minutes <= 120) {
-    const breakpoints = Math.round(6 + ((minutes - 60) / 30));
-    return { maxBreakpoints: Math.min(breakpoints, 8), questionsPerBreakpoint: 3 };
-  } else {
-    const breakpoints = Math.round(8 + ((minutes - 120) / 60));
-    return { maxBreakpoints: Math.min(breakpoints, 10), questionsPerBreakpoint: 3 };
-  }
+  return {
+    maxBreakpoints,
+    questionsPerBreakpoint: config.questionsPerBreakpoint,
+  };
 }

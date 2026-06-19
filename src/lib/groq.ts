@@ -1,90 +1,464 @@
 import Groq from "groq-sdk";
-import { Breakpoint, QuizQuestion, TranscriptSegment } from "./types";
+import {
+  Breakpoint,
+  CodeQuestion,
+  MCQQuestion,
+  QuizQuestion,
+  TextQuestion,
+  TranscriptSegment,
+  VoiceQuestion,
+} from "./types";
+
+const GROQ_QUIZ_MODEL = process.env.GROQ_QUIZ_MODEL ?? "llama-3.1-8b-instant";
+const STOPWORDS = new Set([
+  "the",
+  "and",
+  "that",
+  "this",
+  "with",
+  "from",
+  "have",
+  "will",
+  "your",
+  "about",
+  "into",
+  "what",
+  "when",
+  "where",
+  "which",
+  "their",
+  "there",
+  "then",
+  "them",
+  "they",
+  "were",
+  "been",
+  "being",
+  "also",
+  "just",
+  "like",
+  "over",
+  "into",
+  "than",
+  "for",
+  "your",
+  "you",
+  "are",
+  "was",
+  "has",
+  "had",
+  "can",
+  "could",
+  "would",
+  "should",
+  "does",
+  "did",
+  "doing",
+  "done",
+  "main",
+  "difference",
+  "between",
+  "python",
+]);
 
 function getClient() {
   return new Groq({ apiKey: process.env.GROQ_API_KEY! });
 }
 
-function buildSystemPrompt(
-  breakpointCount: number,
-  questionsPerBreakpoint: number
-): string {
-  return `You are an expert educational content analyzer. Your job is to analyze video transcript segments and create meaningful learning breakpoints with quiz questions.
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
 
-INSTRUCTIONS:
-1. Analyze the transcript and identify exactly ${breakpointCount} key learning moments (breakpoints).
-2. For each breakpoint, create:
-   - A timestamp (in seconds) where the breakpoint should occur (AFTER the concept is explained)
-   - A short topic title (3-7 words)
-   - ${questionsPerBreakpoint} primary quiz questions (multiple choice with 4 options each)
-   - ${questionsPerBreakpoint} retry quiz questions (different questions covering the same concept)
-   - A brief explanation for each question explaining why the correct answer is correct
+function getTranscriptDuration(transcript: TranscriptSegment[]): number {
+  return transcript.reduce((max, segment) => Math.max(max, segment.end), 0);
+}
 
-3. Space breakpoints evenly across the transcript - don't cluster them together.
-4. Questions should test comprehension, not memorization of exact words.
-5. Make incorrect options plausible but clearly wrong to someone who understood the content.
+function buildBreakpointSchedule(
+  transcript: TranscriptSegment[],
+  maxBreakpoints: number,
+  startTime = 0,
+  endTime = getTranscriptDuration(transcript)
+): number[] {
+  if (maxBreakpoints <= 0 || endTime <= startTime) return [];
 
-OUTPUT FORMAT: Return ONLY valid JSON (no markdown, no code blocks) with this exact structure:
+  const usableCount = Math.max(1, Math.min(maxBreakpoints, Math.floor(maxBreakpoints)));
+  const span = endTime - startTime;
+  const spacing = span / (usableCount + 1);
+
+  return Array.from({ length: usableCount }, (_, index) => {
+    const timestamp = startTime + spacing * (index + 1);
+    return Math.min(endTime - 1, Math.max(startTime + 1, Math.round(timestamp)));
+  }).filter((timestamp, index, all) => all.indexOf(timestamp) === index);
+}
+
+function sliceTranscriptThrough(
+  transcript: TranscriptSegment[],
+  timestamp: number
+): TranscriptSegment[] {
+  return transcript.filter((segment) => segment.end <= timestamp);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === "string" ? entry : String(entry ?? "")))
+    .map((entry) => normalizeWhitespace(entry))
+    .filter(Boolean);
+}
+
+function clampIndex(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.min(3, Math.max(0, Math.floor(numeric)));
+}
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .match(/[a-z0-9_+-]{3,}/g)
+    ?.filter((token) => !STOPWORDS.has(token)) ?? [];
+}
+
+function extractKeywords(transcript: TranscriptSegment[], limit = 10): string[] {
+  const counts = new Map<string, number>();
+
+  for (const segment of transcript) {
+    for (const token of tokenize(segment.text)) {
+      counts.set(token, (counts.get(token) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([token]) => token)
+    .slice(0, limit);
+}
+
+function hasProgrammingSignals(transcript: TranscriptSegment[]): boolean {
+  const text = transcript.map((segment) => segment.text).join(" ").toLowerCase();
+  return /(\bcode\b|\bfunction\b|\bclass\b|\bconst\b|\blet\b|\bvar\b|\breturn\b|\bloop\b|\barray\b|\bobject\b|\basync\b|\bawait\b|\bapi\b|\balgorithm\b|\bpython\b|\bjavascript\b|\btypescript\b|\breact\b|\bnext\.js\b)/i.test(text);
+}
+
+function buildFallbackQuestionSet(
+  transcript: TranscriptSegment[],
+  timestamp: number,
+  questionCount: number
+): QuizQuestion[] {
+  const keywords = extractKeywords(transcript, 8);
+  const topic = keywords[0] ?? "the lesson";
+  const secondTopic = keywords[1] ?? topic;
+  const thirdTopic = keywords[2] ?? secondTopic;
+  const isProgrammingLesson = hasProgrammingSignals(transcript);
+  const baseCount = Math.max(1, Math.floor(questionCount));
+  const questions: QuizQuestion[] = [];
+
+  questions.push({
+    type: "mcq",
+    question: `Which topic has been covered by ${formatTime(timestamp)}?`,
+    explanation: `This question is grounded only in the transcript up to ${formatTime(timestamp)}.`,
+    options: [
+      topic,
+      secondTopic === topic ? `${topic} basics` : secondTopic,
+      thirdTopic === topic ? `${topic} details` : thirdTopic,
+      "None of the above",
+    ],
+    correct: 0,
+  });
+
+  if (baseCount >= 2) {
+    questions.push({
+      type: "text",
+      question: `In your own words, summarize what the lesson has established about ${topic} so far.`,
+      explanation: "Short answer practice keeps the prompt tied to the visible transcript window.",
+      expectedAnswer: topic,
+      acceptedKeywords: keywords.slice(0, Math.min(4, keywords.length)),
+      placeholder: "Type 1-2 sentences",
+    });
+  }
+
+  if (baseCount >= 3 && isProgrammingLesson) {
+    questions.push({
+      type: "code",
+      question: `Write a small example that uses ${topic} in the language shown in the lesson.`,
+      explanation: "This scaffold is only used when the transcript clearly includes coding content.",
+      language: "javascript",
+      initialCode: "// Write a minimal example here\n",
+      expectedOutput: undefined,
+      solution: undefined,
+    });
+  } else if (baseCount >= 3) {
+    questions.push({
+      type: "voice",
+      question: `Explain aloud how ${topic} fits into the lesson so far.`,
+      explanation: "Voice questions are scaffolded for now and stay theory-focused.",
+      expectedAnswer: topic,
+      note: "Mock voice response",
+    });
+  }
+
+  while (questions.length < baseCount) {
+    questions.push({
+      type: "text",
+      question: `What is one important idea the lesson has introduced about ${secondTopic}?`,
+      explanation: "The fallback keeps later questions grounded in the visible transcript.",
+      expectedAnswer: secondTopic,
+      acceptedKeywords: [secondTopic, topic].filter((value, index, array) => array.indexOf(value) === index),
+      placeholder: "Write a short answer",
+    });
+  }
+
+  return questions.slice(0, baseCount);
+}
+
+function questionLooksGrounded(question: QuizQuestion, transcriptWindow: TranscriptSegment[]): boolean {
+  const keywords = extractKeywords(transcriptWindow, 12);
+  if (keywords.length === 0) return true;
+
+  const haystack = [
+    question.question,
+    question.explanation ?? "",
+    question.type === "mcq" ? question.options.join(" ") : "",
+    question.type === "code" ? question.initialCode : "",
+    question.type === "text" ? question.expectedAnswer ?? "" : "",
+    question.type === "voice" ? question.expectedAnswer ?? "" : "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return keywords.some((keyword) => haystack.includes(keyword));
+}
+
+function questionLooksValid(question: QuizQuestion, transcriptWindow: TranscriptSegment[]): boolean {
+  if (!question.question || question.question.length < 8) return false;
+
+  if (question.type === "mcq") {
+    return (
+      question.options.length === 4 &&
+      question.options.every((option) => option.trim().length > 0) &&
+      question.correct >= 0 &&
+      question.correct < 4 &&
+      questionLooksGrounded(question, transcriptWindow)
+    );
+  }
+
+  if (question.type === "text") {
+    return true;
+  }
+
+  if (question.type === "code") {
+    return question.language.trim().length > 0 && question.initialCode.trim().length > 0;
+  }
+
+  return true;
+}
+
+function normalizeQuestion(raw: unknown): QuizQuestion | null {
+  if (!isRecord(raw)) return null;
+  const question = typeof raw.question === "string" ? normalizeWhitespace(raw.question) : "";
+  if (!question) return null;
+  const explanation = typeof raw.explanation === "string" ? normalizeWhitespace(raw.explanation) : "";
+  const type = raw.type;
+
+  if (type === "text") {
+    const normalized: TextQuestion = {
+      type: "text",
+      question,
+      explanation,
+      expectedAnswer: typeof raw.expectedAnswer === "string" ? raw.expectedAnswer : undefined,
+      acceptedKeywords: toStringArray(raw.acceptedKeywords),
+      placeholder: typeof raw.placeholder === "string" ? raw.placeholder : undefined,
+    };
+    return normalized;
+  }
+
+  if (type === "code") {
+    const normalized: CodeQuestion = {
+      type: "code",
+      question,
+      explanation,
+      language: typeof raw.language === "string" && raw.language.trim() ? normalizeWhitespace(raw.language) : "javascript",
+      initialCode: typeof raw.initialCode === "string" ? raw.initialCode : "",
+      solution: typeof raw.solution === "string" ? normalizeWhitespace(raw.solution) : undefined,
+      expectedOutput: typeof raw.expectedOutput === "string" ? normalizeWhitespace(raw.expectedOutput) : undefined,
+    };
+    return normalized;
+  }
+
+  if (type === "voice") {
+    const normalized: VoiceQuestion = {
+      type: "voice",
+      question,
+      explanation,
+      expectedAnswer: typeof raw.expectedAnswer === "string" ? normalizeWhitespace(raw.expectedAnswer) : undefined,
+      note: typeof raw.note === "string" ? normalizeWhitespace(raw.note) : undefined,
+    };
+    return normalized;
+  }
+
+  const options = toStringArray(raw.options);
+  const normalized: MCQQuestion = {
+    type: "mcq",
+    question,
+    explanation,
+    options: [
+      options[0] ?? "",
+      options[1] ?? "",
+      options[2] ?? "",
+      options[3] ?? "",
+    ],
+    correct: clampIndex(raw.correct),
+  };
+  return normalized;
+}
+
+function normalizeBreakpoint(
+  raw: unknown,
+  fallbackTimestamp: number,
+  transcriptWindow: TranscriptSegment[],
+  questionCount: number
+): Breakpoint | null {
+  if (!isRecord(raw)) {
+    const fallbackQuestions = buildFallbackQuestionSet(transcriptWindow, fallbackTimestamp, questionCount);
+    return {
+      timestamp: fallbackTimestamp,
+      topic: "Learning checkpoint",
+      questions: fallbackQuestions,
+      primaryQuestions: fallbackQuestions.filter((q): q is MCQQuestion => q.type === "mcq"),
+      retryQuestions: fallbackQuestions.filter((q): q is MCQQuestion => q.type === "mcq"),
+    };
+  }
+  const timestamp = typeof raw.timestamp === "number" ? raw.timestamp : fallbackTimestamp;
+  const topic = typeof raw.topic === "string" && raw.topic.trim() ? raw.topic.trim() : "Learning checkpoint";
+
+  const mixedQuestionsSource =
+    Array.isArray(raw.questions) && raw.questions.length > 0
+      ? raw.questions
+      : [...(Array.isArray(raw.primaryQuestions) ? raw.primaryQuestions : []), ...(Array.isArray(raw.retryQuestions) ? raw.retryQuestions : [])];
+
+  const questions = mixedQuestionsSource
+    .map(normalizeQuestion)
+    .filter((q): q is QuizQuestion => Boolean(q))
+    .filter((q) => questionLooksValid(q, transcriptWindow));
+
+  const fallbackQuestions = buildFallbackQuestionSet(transcriptWindow, timestamp, questionCount);
+  const finalQuestions = questions.length > 0 ? questions : fallbackQuestions;
+  const mergedQuestions = finalQuestions.slice(0, Math.max(1, questionCount));
+  const primaryQuestions = mergedQuestions.filter((q): q is MCQQuestion => q.type === "mcq");
+  const retryQuestions = primaryQuestions.length > 0 ? [...primaryQuestions] : [];
+
+  return {
+    timestamp,
+    topic,
+    questions: mergedQuestions,
+    primaryQuestions,
+    retryQuestions,
+  };
+}
+
+function buildSystemPrompt(timestamp: number, questionCount: number): string {
+  return `You are an expert educational content analyzer for LingoLearn.
+
+You will receive a transcript window that ONLY includes content from 00:00 up to ${formatTime(timestamp)}.
+Do not use concepts, terminology, examples, or answers that are introduced after that point.
+
+Task:
+- Create exactly one breakpoint for this window.
+- Generate exactly ${questionCount} questions in a mixed set.
+- Always include at least one mcq question.
+- Prefer a second text question when the lesson is conceptual or explanatory.
+- Use code questions only when the transcript is clearly about programming, algorithms, debugging, or code examples.
+- Use voice questions only as a scaffold for verbal / spoken-response practice; keep them simple and theory-based.
+- Keep the questions grounded in the transcript window and avoid future knowledge.
+- Use exact transcript facts or clearly implied ideas from the window.
+- Do not invent options that are empty, vague, duplicated, or unrelated.
+- Do not ask filler recap questions like "what was the topic"; ask about meaning, cause, effect, comparison, or application.
+- Keep the questions concise, learner-friendly, and clearly phrased.
+- If a code question is not strongly supported by the transcript, choose text instead.
+
+Question schema:
+{
+  "type": "mcq" | "text" | "code" | "voice",
+  "question": string,
+  "explanation": string,
+  "options": string[4],            // mcq only
+  "correct": number,               // mcq only, 0-3
+  "expectedAnswer": string,        // text and voice only, optional
+  "acceptedKeywords": string[],    // text only, optional
+  "placeholder": string,           // text only, optional
+  "language": string,             // code only
+  "initialCode": string,          // code only
+  "solution": string,             // code only, optional
+  "expectedOutput": string        // code only, optional
+}
+
+Return ONLY valid JSON with this shape:
 {
   "breakpoints": [
     {
-      "timestamp": <seconds as number>,
-      "topic": "<short topic title>",
-      "primaryQuestions": [
-        {
-          "question": "<question text>",
-          "options": ["<option A>", "<option B>", "<option C>", "<option D>"],
-          "correct": <index 0-3 of correct option>,
-          "explanation": "<why the correct answer is correct>"
-        }
-      ],
-      "retryQuestions": [
-        {
-          "question": "<different question on same topic>",
-          "options": ["<option A>", "<option B>", "<option C>", "<option D>"],
-          "correct": <index 0-3 of correct option>,
-          "explanation": "<why the correct answer is correct>"
-        }
-      ]
+      "timestamp": ${timestamp},
+      "topic": "short topic title",
+      "questions": [ ... ]
     }
   ]
 }`;
 }
 
-export function chunkTranscript(
-  transcript: TranscriptSegment[],
-  maxChunkTokens: number = 2000
-): TranscriptSegment[][] {
-  const chunks: TranscriptSegment[][] = [];
-  let currentChunk: TranscriptSegment[] = [];
-  let currentTokens = 0;
-
-  for (const segment of transcript) {
-    const segTokens = Math.ceil(segment.text.split(/\s+/).length * 1.3); // rough token estimate
-    if (currentTokens + segTokens > maxChunkTokens && currentChunk.length > 0) {
-      chunks.push(currentChunk);
-      currentChunk = [];
-      currentTokens = 0;
-    }
-    currentChunk.push(segment);
-    currentTokens += segTokens;
+function extractBreakpoint(
+  rawContent: string,
+  timestamp: number,
+  questionCount: number,
+  transcriptWindow: TranscriptSegment[]
+): Breakpoint | null {
+  try {
+    const parsed = JSON.parse(rawContent) as { breakpoints?: unknown[] };
+    const first = Array.isArray(parsed.breakpoints) ? parsed.breakpoints[0] : null;
+    return normalizeBreakpoint(first, timestamp, transcriptWindow, questionCount);
+  } catch {
+    console.error("Failed to parse Groq response:", rawContent);
+    return normalizeBreakpoint(null, timestamp, transcriptWindow, questionCount);
   }
-
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
-  }
-
-  return chunks;
 }
 
-function formatChunkForPrompt(chunk: TranscriptSegment[]): string {
-  return chunk
-    .map((seg) => {
-      const mins = Math.floor(seg.start / 60);
-      const secs = Math.floor(seg.start % 60);
-      return `[${mins}:${secs.toString().padStart(2, "0")}] ${seg.text}`;
-    })
+async function callGroq(
+  client: Groq,
+  transcriptWindow: TranscriptSegment[],
+  timestamp: number,
+  questionCount: number
+): Promise<Breakpoint | null> {
+  const chunkText = transcriptWindow
+    .map((segment) => `[${formatTime(segment.start)}] ${segment.text}`)
     .join("\n");
+
+  const response = await client.chat.completions.create({
+    model: GROQ_QUIZ_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: buildSystemPrompt(timestamp, questionCount),
+      },
+      {
+        role: "user",
+        content: `Transcript window:\n${chunkText}`,
+      },
+    ],
+    temperature: 0.6,
+    max_tokens: 4096,
+    response_format: { type: "json_object" },
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) return null;
+  return extractBreakpoint(content, timestamp, questionCount, transcriptWindow);
 }
 
 function is429(err: unknown): boolean {
@@ -99,54 +473,18 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function callGroq(
+async function generateBreakpointWithRetry(
   client: Groq,
-  chunk: TranscriptSegment[],
-  bpCount: number,
-  questionsPerBreakpoint: number
-): Promise<Breakpoint[]> {
-  const chunkText = formatChunkForPrompt(chunk);
-  const chunkStart = chunk[0].start;
-  const chunkEnd = chunk[chunk.length - 1].end;
+  transcript: TranscriptSegment[],
+  timestamp: number,
+  questionCount: number
+): Promise<Breakpoint | null> {
+  const windowTranscript = sliceTranscriptThrough(transcript, timestamp);
+  if (windowTranscript.length === 0) return null;
 
-  const response = await client.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      {
-        role: "system",
-        content: buildSystemPrompt(bpCount, questionsPerBreakpoint),
-      },
-      {
-        role: "user",
-        content: `Analyze this transcript segment (from ${Math.floor(chunkStart / 60)}:${Math.floor(chunkStart % 60).toString().padStart(2, "0")} to ${Math.floor(chunkEnd / 60)}:${Math.floor(chunkEnd % 60).toString().padStart(2, "0")}) and create ${bpCount} breakpoint(s) with ${questionsPerBreakpoint} questions each:\n\n${chunkText}`,
-      },
-    ],
-    temperature: 0.7,
-    max_tokens: 4096,
-    response_format: { type: "json_object" },
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) return [];
-
-  try {
-    const parsed = JSON.parse(content);
-    return (parsed.breakpoints || []) as Breakpoint[];
-  } catch {
-    console.error("Failed to parse Groq response:", content);
-    return [];
-  }
-}
-
-async function processChunkWithRetry(
-  client: Groq,
-  chunk: TranscriptSegment[],
-  bpCount: number,
-  questionsPerBreakpoint: number
-): Promise<Breakpoint[]> {
   for (let attempt = 0; attempt <= 3; attempt++) {
     try {
-      return await callGroq(client, chunk, bpCount, questionsPerBreakpoint);
+      return await callGroq(client, windowTranscript, timestamp, questionCount);
     } catch (err) {
       if (is429(err) && attempt < 3) {
         const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 500;
@@ -155,13 +493,14 @@ async function processChunkWithRetry(
         continue;
       }
       if (!is429(err)) {
-        console.error("Non-rate-limit error in chunk, skipping:", err);
-        return [];
+        console.error("Non-rate-limit error in breakpoint generation, skipping:", err);
+        return null;
       }
       throw err;
     }
   }
-  return [];
+
+  return null;
 }
 
 export async function generateQuizzes(
@@ -169,33 +508,8 @@ export async function generateQuizzes(
   maxBreakpoints: number,
   questionsPerBreakpoint: number
 ): Promise<Breakpoint[]> {
-  const client = getClient();
-  const chunks = chunkTranscript(transcript);
-
-  // Distribute breakpoints across chunks
-  const breakpointsPerChunk = chunks.map((_, i) => {
-    const base = Math.floor(maxBreakpoints / chunks.length);
-    const remainder = maxBreakpoints % chunks.length;
-    return base + (i < remainder ? 1 : 0);
-  });
-
-  // Process chunks sequentially to avoid rate limits
-  const results: Breakpoint[][] = [];
-  for (const [i, chunk] of chunks.entries()) {
-    const bpCount = breakpointsPerChunk[i];
-    if (bpCount === 0) {
-      results.push([]);
-      continue;
-    }
-    const result = await processChunkWithRetry(client, chunk, bpCount, questionsPerBreakpoint);
-    results.push(result);
-  }
-
-  // Flatten and sort by timestamp
-  const allBreakpoints = results.flat().sort((a, b) => a.timestamp - b.timestamp);
-
-  // Ensure we don't exceed maxBreakpoints
-  return allBreakpoints.slice(0, maxBreakpoints);
+  const duration = getTranscriptDuration(transcript);
+  return generateQuizzesForRange(transcript, 0, duration, maxBreakpoints, questionsPerBreakpoint);
 }
 
 export async function generateQuizzesForRange(
@@ -205,9 +519,16 @@ export async function generateQuizzesForRange(
   maxBreakpoints: number,
   questionsPerBreakpoint: number
 ): Promise<Breakpoint[]> {
-  const rangeTranscript = transcript.filter(
-    (seg) => seg.start < endSec && seg.end > startSec
-  );
-  if (rangeTranscript.length === 0) return [];
-  return generateQuizzes(rangeTranscript, maxBreakpoints, questionsPerBreakpoint);
+  const client = getClient();
+  const schedule = buildBreakpointSchedule(transcript, maxBreakpoints, startSec, endSec);
+
+  const results: Breakpoint[] = [];
+  for (const timestamp of schedule) {
+    const breakpoint = await generateBreakpointWithRetry(client, transcript, timestamp, questionsPerBreakpoint);
+    if (breakpoint) {
+      results.push(breakpoint);
+    }
+  }
+
+  return results.sort((a, b) => a.timestamp - b.timestamp);
 }

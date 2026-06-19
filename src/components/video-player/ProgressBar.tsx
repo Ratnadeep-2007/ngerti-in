@@ -120,32 +120,28 @@ export default function ProgressBar({
             style={{ left: `${progress}%` }}
           />
 
-          {/* Breakpoint diamond markers */}
+          {/* Breakpoint dot markers */}
           {breakpoints.map((bp, i) => {
             const pct = (bp.timestamp / safeDuration) * 100;
             const { fill, stroke } = getMarkerStyle(i);
+            const isFirstUncleared = breakpointsCleared.findIndex((c) => !c) === i;
+            
             return (
               <div
                 key={i}
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10"
-                style={{ left: `${pct}%` }}
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 h-1.5 w-1.5 rounded-full transition-all duration-300"
+                style={{ 
+                  left: `${pct}%`,
+                  backgroundColor: fill === "transparent" ? stroke : fill,
+                  boxShadow: isFirstUncleared ? `0 0 8px 2px ${fill}` : "none",
+                  cursor: "pointer"
+                }}
                 title={bp.topic}
-              >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 12 12"
-                  className="drop-shadow-sm transition-colors duration-300"
-                  aria-label={`Checkpoint: ${bp.topic}`}
-                >
-                  <polygon
-                    points="6,1 11,6 6,11 1,6"
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth="1.5"
-                  />
-                </svg>
-              </div>
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSeek(bp.timestamp);
+                }}
+              />
             );
           })}
         </div>

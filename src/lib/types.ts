@@ -4,6 +4,44 @@ export interface TranscriptSegment {
   text: string;
 }
 
+export type QuestionType = "mcq" | "text" | "code" | "voice";
+export type QuizDifficulty = "easy" | "medium" | "hard";
+
+interface BaseQuestion {
+  type: QuestionType;
+  question: string;
+  explanation?: string;
+}
+
+export interface MCQQuestion extends BaseQuestion {
+  type: "mcq";
+  options: [string, string, string, string];
+  correct: number; // index of correct option
+}
+
+export interface TextQuestion extends BaseQuestion {
+  type: "text";
+  expectedAnswer?: string;
+  acceptedKeywords?: string[];
+  placeholder?: string;
+}
+
+export interface CodeQuestion extends BaseQuestion {
+  type: "code";
+  language: string;
+  initialCode: string;
+  solution?: string;
+  expectedOutput?: string;
+}
+
+export interface VoiceQuestion extends BaseQuestion {
+  type: "voice";
+  expectedAnswer?: string;
+  note?: string;
+}
+
+export type QuizQuestion = MCQQuestion | TextQuestion | CodeQuestion | VoiceQuestion;
+
 export interface VideoMetadata {
   title: string;
   duration: number; // seconds
@@ -11,18 +49,12 @@ export interface VideoMetadata {
   channelName: string;
 }
 
-export interface QuizQuestion {
-  question: string;
-  options: string[];
-  correct: number; // index of correct option
-  explanation: string;
-}
-
 export interface Breakpoint {
   timestamp: number; // seconds into video
   topic: string;
-  primaryQuestions: QuizQuestion[];
-  retryQuestions: QuizQuestion[];
+  questions: QuizQuestion[];
+  primaryQuestions: MCQQuestion[];
+  retryQuestions: MCQQuestion[];
 }
 
 export interface QuizFrequency {
@@ -82,6 +114,7 @@ export interface Session {
   translatedContent: TranslatedContent;
   originalBreakpoints: Breakpoint[];
   quizFrequency: QuizFrequency;
+  quizDifficulty: QuizDifficulty;
   progress: SessionProgress;
   status: SessionStatus;
   createdAt: string;

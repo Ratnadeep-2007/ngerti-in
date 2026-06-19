@@ -8,6 +8,7 @@ import {
   Breakpoint,
   QuizFrequency,
   LearningMode,
+  QuizDifficulty,
 } from "./types";
 
 const SESSIONS_KEY = "lingodev_sessions";
@@ -27,6 +28,7 @@ export function createSession(params: {
   translatedContent: TranslatedContent;
   originalBreakpoints: Breakpoint[];
   quizFrequency: QuizFrequency;
+  quizDifficulty: QuizDifficulty;
   userName: string;
   rawTranscript?: TranscriptSegment[];
   quizzesGeneratedUpTo?: number;
@@ -80,9 +82,10 @@ export function updateSession(id: string, updates: Partial<Session>): Session | 
 
   sessions[index] = { ...sessions[index], ...updates };
   // Explicitly delete keys set to undefined (spread doesn't remove them)
+  const sessionEntry = sessions[index] as unknown as Record<string, unknown>;
   for (const key of Object.keys(updates) as (keyof Session)[]) {
     if (updates[key] === undefined) {
-      delete (sessions[index] as any)[key];
+      delete sessionEntry[key as string];
     }
   }
   if (typeof window !== "undefined") {

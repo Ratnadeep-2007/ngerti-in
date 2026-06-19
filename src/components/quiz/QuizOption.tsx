@@ -19,6 +19,7 @@ export default function QuizOption({
   isRevealed,
   onSelect,
 }: QuizOptionProps) {
+  const displayText = text.trim() || "Option unavailable";
   const letter = LETTER_LABELS[index] ?? String(index + 1);
 
   // Determine visual state
@@ -30,10 +31,10 @@ export default function QuizOption({
   // 3. Not revealed + selected     → primary border highlight
   // 4. Default                     → surface-light
   let containerClasses =
-    "group relative flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left transition-all duration-200 ";
+    "group relative flex w-full min-h-16 items-start gap-3 rounded-2xl border px-4 py-4 text-left transition-all duration-200 ";
 
   let letterClasses =
-    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold transition-all duration-200 ";
+    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-extrabold transition-all duration-200 ";
 
   if (isRevealed && isCorrect) {
     // Correct answer revealed
@@ -62,7 +63,7 @@ export default function QuizOption({
   }
 
   // Text colour
-  let textClasses = "flex-1 text-sm leading-relaxed font-medium transition-colors duration-200 ";
+  let textClasses = "flex-1 text-base sm:text-[1.05rem] leading-6 font-semibold transition-colors duration-200 whitespace-pre-wrap break-words ";
   if (isRevealed && isCorrect) {
     textClasses += "text-success";
   } else if (isRevealed && isSelected && isCorrect === false) {
@@ -103,10 +104,10 @@ export default function QuizOption({
       onClick={() => !isDisabled && onSelect(index)}
       disabled={isDisabled}
       aria-pressed={isSelected}
-      aria-label={`Option ${letter}: ${text}`}
+      aria-label={`Option ${letter}: ${displayText}`}
     >
       <span className={letterClasses}>{letter}</span>
-      <span className={textClasses}>{text}</span>
+      <span className={textClasses}>{displayText}</span>
       {revealIcon}
     </button>
   );

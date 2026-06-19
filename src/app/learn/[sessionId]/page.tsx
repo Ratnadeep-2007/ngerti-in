@@ -54,6 +54,22 @@ function TrophyIcon() {
   );
 }
 
+function breakpointHasBlankOptions(breakpoint: Breakpoint): boolean {
+  return breakpoint.questions.some(
+    (question) =>
+      question.type === "mcq" &&
+      question.options.some((option) => !option || !option.trim())
+  );
+}
+
+function resizeBooleanArray(values: boolean[], targetLength: number): boolean[] {
+  return Array.from({ length: targetLength }, (_, index) => values[index] ?? false);
+}
+
+function resizeNumberArray(values: number[], targetLength: number): number[] {
+  return Array.from({ length: targetLength }, (_, index) => values[index] ?? 0);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LearnSessionPage() {
@@ -82,6 +98,7 @@ export default function LearnSessionPage() {
 
   // ── Lazy prefetch state ───────────────────────────────────────────────────
   const prefetchInProgress = useRef(false);
+  const repairInProgress = useRef(false);
 
   // ── Background final quiz generation ────────────────────────────────────
   const finalQuizGenerationRef = useRef<{
@@ -114,6 +131,83 @@ export default function LearnSessionPage() {
     }
     setSession(s);
   }, [sessionId]);
+
+  // Repair any stale sessions that still contain blank quiz options.
+  useEffect(() => {
+    if (!session || repairInProgress.current) return;
+    if (!session.rawTranscript || session.translatedContent.breakpoints.length === 0) return;
+
+    const needsRepair = session.translatedContent.breakpoints.some(breakpointHasBlankOptions);
+    if (!needsRepair) return;
+
+    repairInProgress.current = true;
+
+    (async () => {
+      try {
+        const breakpointsToRegenerate = Math.max(1, session.translatedContent.breakpoints.length);
+        const quizzesRes = await fetch("/api/generate-quizzes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript: session.rawTranscript,
+            maxBreakpoints: breakpointsToRegenerate,
+            questionsPerBreakpoint: session.quizFrequency.questionsPerBreakpoint,
+            startTime: 0,
+            endTime: session.metadata.duration,
+          }),
+        });
+
+        if (!quizzesRes.ok) return;
+
+        const quizzesData = (await quizzesRes.json()) as { breakpoints: Breakpoint[] };
+        if (quizzesData.breakpoints.length === 0) return;
+
+        const translateRes = await fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            transcript: session.rawTranscript,
+            breakpoints: quizzesData.breakpoints,
+            sourceLocale: session.sourceLocale,
+            targetLocale: session.targetLocale,
+          }),
+        });
+
+        if (!translateRes.ok) return;
+
+        const translateData = (await translateRes.json()) as {
+          translatedContent: TranslatedContent;
+          fallback?: boolean;
+        };
+
+        if (!translateData.translatedContent?.breakpoints?.length) return;
+
+        const repairedTranslated = translateData.translatedContent;
+        const repairedOriginal = quizzesData.breakpoints;
+        const nextLength = repairedTranslated.breakpoints.length;
+        const repairedProgress = {
+          ...session.progress,
+          breakpointsCleared: resizeBooleanArray(session.progress.breakpointsCleared, nextLength),
+          attemptsPerBreakpoint: resizeNumberArray(session.progress.attemptsPerBreakpoint, nextLength),
+          currentBreakpointIndex: Math.min(session.progress.currentBreakpointIndex, Math.max(0, nextLength - 1)),
+        };
+
+        const updated = updateSession(session.id, {
+          translatedContent: repairedTranslated,
+          originalBreakpoints: repairedOriginal,
+          progress: repairedProgress,
+          finalQuiz: undefined,
+        });
+        if (updated) {
+          setSession(updated);
+        }
+      } catch (error) {
+        console.error("Failed to repair stale quiz options:", error);
+      } finally {
+        repairInProgress.current = false;
+      }
+    })();
+  }, [session]);
 
   // ── Track cursor position for speech bubble placement ────────────────────
   useEffect(() => {
@@ -303,8 +397,7 @@ export default function LearnSessionPage() {
     };
 
     try {
-      const duration = session.metadata.duration;
-      const questionsPerBreakpoint = duration < 300 ? 5 : duration < 900 ? 7 : 10;
+      const questionsPerBreakpoint = session.quizFrequency.questionsPerBreakpoint;
       const transcriptToUse = session.rawTranscript ?? session.originalTranscript;
 
       const res = await fetch("/api/generate-quizzes", {
@@ -476,8 +569,7 @@ export default function LearnSessionPage() {
     setIsGeneratingFinalQuiz(true);
     setFinalQuizGenError(false);
     try {
-      const duration = session.metadata.duration;
-      const questionsPerBreakpoint = duration < 300 ? 5 : duration < 900 ? 7 : 10;
+      const questionsPerBreakpoint = session.quizFrequency.questionsPerBreakpoint;
       const transcriptToUse = session.rawTranscript ?? session.originalTranscript;
 
       const res = await fetch("/api/generate-quizzes", {
@@ -862,7 +954,7 @@ export default function LearnSessionPage() {
               {companion && (
                 <span className="text-xs text-muted truncate">
                   {t("common.with")}{" "}
-                  <span className="text-foreground font-medium">{t(companion.name as any)}</span>
+                  <span className="text-foreground font-medium">{companion.name}</span>
                 </span>
               )}
             </div>

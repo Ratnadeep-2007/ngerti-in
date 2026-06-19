@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractTranscript } from "@/lib/ytdlp";
 import { detectLocale } from "@/lib/lingo";
 import { calculateQuizFrequency } from "@/lib/quiz-frequency";
+import type { QuizDifficulty } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json();
+    const { url, difficulty } = await request.json() as {
+      url?: string;
+      difficulty?: QuizDifficulty;
+    };
 
     if (!url) {
       return NextResponse.json({ error: "YouTube URL is required" }, { status: 400 });
@@ -28,7 +32,7 @@ export async function POST(request: NextRequest) {
     const detectedLocale = await detectLocale(sampleText);
 
     // Calculate quiz frequency
-    const quizFrequency = calculateQuizFrequency(metadata.duration);
+    const quizFrequency = calculateQuizFrequency(metadata.duration, difficulty ?? "medium");
 
     return NextResponse.json({
       transcript,
