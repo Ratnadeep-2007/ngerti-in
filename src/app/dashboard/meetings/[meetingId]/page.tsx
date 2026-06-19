@@ -4,14 +4,13 @@ import { getQueryClient, trpc } from "@/trpc/server";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { headers } from "next/headers";
-import { auth, getSessionCore } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import {
   MeetingIdView,
   MeetingIdViewError,
   MeetingIdViewLoading,
 } from "@/modules/meetings/ui/views/meeting-id-view";
+import { createTRPCContext } from "@/trpc/init";
 
 interface Props {
   params: Promise<{
@@ -21,7 +20,7 @@ interface Props {
 
 const page = async ({ params }: Props) => {
   const { meetingId } = await params;
-  const session = await getSessionCore(await headers());
+  const { session } = await createTRPCContext();
 
   if (!session) {
     redirect("/sign-in");
@@ -29,9 +28,9 @@ const page = async ({ params }: Props) => {
 
   const queryClient = getQueryClient();
   // Prefetch asynchronously to enable instant loading fallback streaming
-  queryClient.prefetchQuery(
-     trpc.meetings.getOne.queryOptions({ id: meetingId }),
-  ).catch((err) => console.error("Server-side prefetch error:", err));
+  queryClient
+    .prefetchQuery(trpc.meetings.getOne.queryOptions({ id: meetingId }))
+    .catch((err) => console.error("Server-side prefetch error:", err));
 
   return (
     <>

@@ -9,11 +9,10 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { AgentsListHeader } from "@/modules/agents/ui/components/agents-list-header";
-import { headers } from "next/headers";
-import { auth, getSessionCore } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SearchParams } from "nuqs";
 import { loadSearchParams } from "@/modules/agents/params";
+import { createTRPCContext } from "@/trpc/init";
 
 interface Props {
   searchParams: Promise<SearchParams>;
@@ -22,7 +21,7 @@ interface Props {
 const page = async ({ searchParams }: Props) => {
   const filters = await loadSearchParams(searchParams);
 
-  const session = await getSessionCore(await headers());
+  const { session } = await createTRPCContext();
 
   if (!session) {
     redirect("/sign-in");
@@ -30,9 +29,9 @@ const page = async ({ searchParams }: Props) => {
 
   const queryClient = getQueryClient();
   // Prefetch asynchronously to enable instant loading fallback streaming
-  queryClient.prefetchQuery(
-    trpc.agents.getMany.queryOptions({ ...filters }),
-  ).catch((err) => console.error("Server-side prefetch error:", err));
+  queryClient
+    .prefetchQuery(trpc.agents.getMany.queryOptions({ ...filters }))
+    .catch((err) => console.error("Server-side prefetch error:", err));
 
   return (
     <>

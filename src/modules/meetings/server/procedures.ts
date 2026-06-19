@@ -138,7 +138,10 @@ export const meetingsRouter = createTRPCRouter({
 
       console.log("finalUpdateData", finalUpdateData);
 
-      if (Object.keys(finalUpdateData).length === 0 || Object.values(finalUpdateData).every(v => v === undefined)) {
+      if (
+        Object.keys(finalUpdateData).length === 0 ||
+        Object.values(finalUpdateData).every((v) => v === undefined)
+      ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "No valid fields provided for update",
@@ -158,10 +161,7 @@ export const meetingsRouter = createTRPCRouter({
     .input(meetingsInsertSchema)
     .mutation(async ({ input, ctx }) => {
       // 1. Parallelize Database Calls
-      const [
-        [createdMeeting],
-        [existingAgent]
-      ] = await Promise.all([
+      const [[createdMeeting], [existingAgent]] = await Promise.all([
         db
           .insert(meetings)
           .values({
@@ -169,10 +169,7 @@ export const meetingsRouter = createTRPCRouter({
             userId: ctx.userId.user.id,
           })
           .returning(),
-        db
-          .select()
-          .from(agents)
-          .where(eq(agents.id, input.agentId))
+        db.select().from(agents).where(eq(agents.id, input.agentId)),
       ]);
 
       if (!existingAgent) {
@@ -184,7 +181,7 @@ export const meetingsRouter = createTRPCRouter({
 
       // 2. Parallelize Stream API Calls
       const call = streamVideo.video.call("default", createdMeeting.id);
-      
+
       await Promise.all([
         call.create({
           data: {
@@ -216,7 +213,7 @@ export const meetingsRouter = createTRPCRouter({
               variant: "botttsNeutral",
             }),
           },
-        ])
+        ]),
       ]);
 
       return createdMeeting;
@@ -246,7 +243,10 @@ export const meetingsRouter = createTRPCRouter({
         );
 
       if (!existingMeeting) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Meeting not found" });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
       }
 
       let finalRecordingUrl = existingMeeting.recordingUrl;
@@ -257,18 +257,30 @@ export const meetingsRouter = createTRPCRouter({
         try {
           const [recordingsRes, transcriptionsRes] = await Promise.all([
             !finalRecordingUrl
-              ? streamVideo.video.listRecordings({ type: "default", id: input.id })
+              ? streamVideo.video.listRecordings({
+                  type: "default",
+                  id: input.id,
+                })
               : null,
             !finalTranscriptUrl
-              ? streamVideo.video.listTranscriptions({ type: "default", id: input.id })
+              ? streamVideo.video.listTranscriptions({
+                  type: "default",
+                  id: input.id,
+                })
               : null,
           ]);
 
-          if (recordingsRes?.recordings && recordingsRes.recordings.length > 0) {
+          if (
+            recordingsRes?.recordings &&
+            recordingsRes.recordings.length > 0
+          ) {
             finalRecordingUrl = recordingsRes.recordings[0].url;
           }
 
-          if (transcriptionsRes?.transcriptions && transcriptionsRes.transcriptions.length > 0) {
+          if (
+            transcriptionsRes?.transcriptions &&
+            transcriptionsRes.transcriptions.length > 0
+          ) {
             finalTranscriptUrl = transcriptionsRes.transcriptions[0].url;
           }
 
@@ -283,9 +295,10 @@ export const meetingsRouter = createTRPCRouter({
           ) {
             const updateData: any = {};
             if (finalRecordingUrl) updateData.recordingUrl = finalRecordingUrl;
-            if (finalTranscriptUrl) updateData.transcriptUrl = finalTranscriptUrl;
+            if (finalTranscriptUrl)
+              updateData.transcriptUrl = finalTranscriptUrl;
             if (finalStatus) updateData.status = finalStatus;
-            
+
             // If meeting has ended but endedAt is not set, set it now
             const endedAtValue = existingMeeting.endedAt || new Date();
             updateData.endedAt = endedAtValue;
@@ -305,7 +318,7 @@ export const meetingsRouter = createTRPCRouter({
                 },
               });
             }
-            
+
             return {
               ...existingMeeting,
               recordingUrl: finalRecordingUrl,
@@ -315,9 +328,15 @@ export const meetingsRouter = createTRPCRouter({
             };
           }
         } catch (e) {
-          console.error("Failed to query recordings/transcriptions from Stream:", e);
+          console.error(
+            "Failed to query recordings/transcriptions from Stream:",
+            e,
+          );
         }
-      } else if (existingMeeting.status === "processing" && finalTranscriptUrl) {
+      } else if (
+        existingMeeting.status === "processing" &&
+        finalTranscriptUrl
+      ) {
         // Fallback: If the meeting is stuck in 'processing' but we already have the transcript url,
         // trigger Inngest processing again.
         try {
@@ -422,7 +441,10 @@ export const meetingsRouter = createTRPCRouter({
 
       if (!transcriptUrl) {
         try {
-          const res = await streamVideo.video.listTranscriptions({ type: "default", id: input.id });
+          const res = await streamVideo.video.listTranscriptions({
+            type: "default",
+            id: input.id,
+          });
           if (res.transcriptions && res.transcriptions.length > 0) {
             transcriptUrl = res.transcriptions[0].url;
             await db
@@ -431,7 +453,10 @@ export const meetingsRouter = createTRPCRouter({
               .where(eq(meetings.id, input.id));
           }
         } catch (e) {
-          console.error("Failed to query transcriptions from Stream in getTranscript:", e);
+          console.error(
+            "Failed to query transcriptions from Stream in getTranscript:",
+            e,
+          );
         }
       }
 
@@ -507,29 +532,71 @@ export const meetingsRouter = createTRPCRouter({
     }),
 
   getHours: protectedProcedure.query(async ({ input, ctx }) => {
-    const meetingArr = await db
-      .select()
+    const [aggregate] = await db
+      .select({
+        totalHours: sql<string>`
+          COALESCE(
+            ROUND(
+              SUM(
+                CASE
+                  WHEN ${meetings.startedAt} IS NOT NULL AND ${meetings.endedAt} IS NOT NULL
+                  THEN EXTRACT(EPOCH FROM (${meetings.endedAt} - ${meetings.startedAt})) / 3600.0
+                  ELSE 0
+                END
+              )::numeric,
+              2
+            ),
+            0
+          )::text
+        `,
+      })
       .from(meetings)
-      .where(eq(meetings.userId, ctx.userId.user.id)); // Fix: changed from meetings.id to meetings.userId
+      .where(eq(meetings.userId, ctx.userId.user.id));
 
-    if (meetingArr.length === 0) {
-      return "0.00";
-    }
+    return aggregate?.totalHours ?? "0.00";
+  }),
 
-    let totalHours = 0;
+  getDashboardStats: protectedProcedure.query(async ({ ctx }) => {
+    const userId = ctx.userId.user.id;
 
-    for (const { startedAt, endedAt } of meetingArr) {
-      if (!endedAt || !startedAt) {
-        totalHours += 0;
-        continue;
-      }
+    const [meetingRows, tutorRows] = await Promise.all([
+      db
+        .select({
+          totalMeetings: count(),
+          totalHours: sql<string>`
+            COALESCE(
+              ROUND(
+                SUM(
+                  CASE
+                    WHEN ${meetings.startedAt} IS NOT NULL AND ${meetings.endedAt} IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (${meetings.endedAt} - ${meetings.startedAt})) / 3600.0
+                    ELSE 0
+                  END
+                )::numeric,
+                2
+              ),
+              0
+            )::text
+          `,
+        })
+        .from(meetings)
+        .where(eq(meetings.userId, userId)),
+      db
+        .select({
+          totalTutors: count(),
+        })
+        .from(agents)
+        .where(eq(agents.userId, userId)),
+    ]);
 
-      const diffMs = endedAt.getTime() - startedAt.getTime();
-      const diffHours = diffMs / (1000 * 60 * 60);
-      totalHours += diffHours;
-    }
+    const meetingAggregate = meetingRows[0];
+    const tutorAggregate = tutorRows[0];
 
-    return totalHours.toFixed(2);
+    return {
+      totalMeetings: meetingAggregate?.totalMeetings ?? 0,
+      totalTutors: tutorAggregate?.totalTutors ?? 0,
+      totalHours: meetingAggregate?.totalHours ?? "0.00",
+    };
   }),
 
   getLatestMeeting: protectedProcedure.query(async ({ input, ctx }) => {
@@ -565,51 +632,51 @@ export const meetingsRouter = createTRPCRouter({
         ),
       );
 
-    const nodes: any[] = [];
-    const links: any[] = [];
-    const topicToMeetings: Record<string, string[]> = {};
+    const nodeWeights = new Map<string, number>();
+    const linkWeights = new Map<string, number>();
 
     allMeetings.forEach((meeting) => {
       if (!meeting.topics) return;
+
       let topics: string[] = [];
       try {
         topics = JSON.parse(meeting.topics);
-      } catch (e) {
+      } catch {
         return;
       }
 
-      topics.forEach((topic) => {
-        if (!topicToMeetings[topic]) {
-          topicToMeetings[topic] = [];
-          nodes.push({ id: topic, group: 1, val: 1 });
-        } else {
-          // Increase node size if topic appears multiple times
-          const node = nodes.find((n) => n.id === topic);
-          if (node) node.val += 1;
-        }
-        topicToMeetings[topic].push(meeting.id);
+      const uniqueTopics = [...new Set(topics.filter(Boolean))];
+
+      uniqueTopics.forEach((topic) => {
+        nodeWeights.set(topic, (nodeWeights.get(topic) ?? 0) + 1);
       });
-    });
 
-    // Create links between topics that appear in the same meeting
-    const topicList = Object.keys(topicToMeetings);
-    for (let i = 0; i < topicList.length; i++) {
-      for (let j = i + 1; j < topicList.length; j++) {
-        const t1 = topicList[i];
-        const t2 = topicList[j];
+      for (let i = 0; i < uniqueTopics.length; i += 1) {
+        for (let j = i + 1; j < uniqueTopics.length; j += 1) {
+          const source = uniqueTopics[i];
+          const target = uniqueTopics[j];
+          const key = [source, target].sort().join("::");
 
-        const sharedMeetings = topicToMeetings[t1].filter((m) =>
-          topicToMeetings[t2].includes(m),
-        );
-        if (sharedMeetings.length > 0) {
-          links.push({
-            source: t1,
-            target: t2,
-            value: sharedMeetings.length,
-          });
+          linkWeights.set(key, (linkWeights.get(key) ?? 0) + 1);
         }
       }
-    }
+    });
+
+    const nodes = Array.from(nodeWeights.entries()).map(([id, value]) => ({
+      id,
+      group: 1,
+      val: value,
+    }));
+
+    const links = Array.from(linkWeights.entries()).map(([key, value]) => {
+      const [source, target] = key.split("::");
+
+      return {
+        source,
+        target,
+        value,
+      };
+    });
 
     return { nodes, links };
   }),
@@ -648,7 +715,9 @@ export const meetingsRouter = createTRPCRouter({
     )
     .mutation(async ({ input, ctx }) => {
       const { meetingId, text, personality, language } = input;
-      console.log(`[TRPC talkToAgent] Request for meetingId: ${meetingId}, user: ${ctx.userId.user.id}, text: "${text.substring(0, 50)}...", personality: ${personality}, language: ${language}`);
+      console.log(
+        `[TRPC talkToAgent] Request for meetingId: ${meetingId}, user: ${ctx.userId.user.id}, text: "${text.substring(0, 50)}...", personality: ${personality}, language: ${language}`,
+      );
 
       let existingMeeting;
       try {
@@ -670,7 +739,10 @@ export const meetingsRouter = createTRPCRouter({
           );
         existingMeeting = results[0];
       } catch (dbErr) {
-        console.error(`[TRPC talkToAgent] Database select error for meeting ${meetingId}:`, dbErr);
+        console.error(
+          `[TRPC talkToAgent] Database select error for meeting ${meetingId}:`,
+          dbErr,
+        );
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Database query failed",
@@ -679,7 +751,9 @@ export const meetingsRouter = createTRPCRouter({
       }
 
       if (!existingMeeting) {
-        console.warn(`[TRPC talkToAgent] Meeting not found or unauthorized: ${meetingId} for user ${ctx.userId.user.id}`);
+        console.warn(
+          `[TRPC talkToAgent] Meeting not found or unauthorized: ${meetingId} for user ${ctx.userId.user.id}`,
+        );
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Meeting not found",
@@ -697,7 +771,10 @@ export const meetingsRouter = createTRPCRouter({
         await channel.create();
         messages = await channel.query({ messages: { limit: 10 } });
       } catch (streamChatErr) {
-        console.error(`[TRPC talkToAgent] Stream Chat API failure for meeting ${meetingId}:`, streamChatErr);
+        console.error(
+          `[TRPC talkToAgent] Stream Chat API failure for meeting ${meetingId}:`,
+          streamChatErr,
+        );
       }
 
       const history = (messages.messages || [])
@@ -730,7 +807,7 @@ export const meetingsRouter = createTRPCRouter({
           - Be analytical, encouraging, and detail-oriented.
         `;
       }
-      
+
       let languageInstruction = "";
       let langName = "English";
       if (language) {
@@ -815,7 +892,10 @@ export const meetingsRouter = createTRPCRouter({
         const result = await chat.sendMessage(promptWithLang);
         aiResponse = result.response.text();
       } catch (geminiErr) {
-        console.error(`[TRPC talkToAgent] Gemini API invocation failure for meeting ${meetingId}:`, geminiErr);
+        console.error(
+          `[TRPC talkToAgent] Gemini API invocation failure for meeting ${meetingId}:`,
+          geminiErr,
+        );
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "No response from Gemini API",
@@ -830,31 +910,41 @@ export const meetingsRouter = createTRPCRouter({
 
       // Run Stream Chat sync in the background to avoid blocking the voice response (saves ~400-800ms latency)
       const fakeMessageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      
+
       if (channel) {
-        streamChat.upsertUser({
-          id: agentData.id,
-          name: agentData.name,
-          image: avatarUrl,
-          role: "user",
-        })
-        .then(() => channel.addMembers([agentData.id]))
-        .then(() => channel.sendMessage({
-          text: aiResponse,
-          user: {
+        streamChat
+          .upsertUser({
             id: agentData.id,
             name: agentData.name,
             image: avatarUrl,
-          },
-        }))
-        .then(() => {
-          console.log(`[TRPC talkToAgent] Successfully synchronized AI response message to Stream Chat channel ${meetingId}`);
-        })
-        .catch((chatError) => {
-          console.error(`[TRPC talkToAgent] Failed to sync AI response to Stream Chat in background:`, chatError);
-        });
+            role: "user",
+          })
+          .then(() => channel.addMembers([agentData.id]))
+          .then(() =>
+            channel.sendMessage({
+              text: aiResponse,
+              user: {
+                id: agentData.id,
+                name: agentData.name,
+                image: avatarUrl,
+              },
+            }),
+          )
+          .then(() => {
+            console.log(
+              `[TRPC talkToAgent] Successfully synchronized AI response message to Stream Chat channel ${meetingId}`,
+            );
+          })
+          .catch((chatError) => {
+            console.error(
+              `[TRPC talkToAgent] Failed to sync AI response to Stream Chat in background:`,
+              chatError,
+            );
+          });
       } else {
-        console.warn(`[TRPC talkToAgent] Stream Chat channel was not initialized; skipping background chat message sync.`);
+        console.warn(
+          `[TRPC talkToAgent] Stream Chat channel was not initialized; skipping background chat message sync.`,
+        );
       }
 
       return {
@@ -871,9 +961,9 @@ export const meetingsRouter = createTRPCRouter({
           z.object({
             role: z.enum(["user", "assistant"]),
             content: z.string(),
-          })
+          }),
         ),
-      })
+      }),
     )
     .mutation(async ({ input, ctx }) => {
       const { meetingId, messages } = input;
@@ -957,7 +1047,10 @@ export const meetingsRouter = createTRPCRouter({
         const result = await chat.sendMessage(lastMessage.content);
         aiResponse = result.response.text();
       } catch (geminiErr) {
-        console.error(`[TRPC askAi] Gemini API invocation failure for meeting ${meetingId}:`, geminiErr);
+        console.error(
+          `[TRPC askAi] Gemini API invocation failure for meeting ${meetingId}:`,
+          geminiErr,
+        );
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "No response from Gemini API",

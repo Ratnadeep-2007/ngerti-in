@@ -8,22 +8,14 @@ import { CalendarDays, Users, Clock } from "lucide-react";
 export default function Analytics() {
   const trpc = useTRPC();
 
-  const { data: meetingData } = useSuspenseQuery(
-    trpc.meetings.getMany.queryOptions({}),
-  );
-
-  const { data: tutorData } = useSuspenseQuery(
-    trpc.agents.getMany.queryOptions({}),
-  );
-
-  const { data: timeData } = useSuspenseQuery(
-    trpc.meetings.getHours.queryOptions(),
+  const { data } = useSuspenseQuery(
+    trpc.meetings.getDashboardStats.queryOptions(),
   );
 
   const cards = [
     {
       title: "Total Meetings",
-      value: meetingData.total,
+      value: data.totalMeetings,
       icon: CalendarDays,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
@@ -32,7 +24,7 @@ export default function Analytics() {
     },
     {
       title: "Total Tutors",
-      value: tutorData.total,
+      value: data.totalTutors,
       icon: Users,
       color: "text-green-600",
       bgColor: "bg-green-50",
@@ -41,7 +33,7 @@ export default function Analytics() {
     },
     {
       title: "Total Meeting Time",
-      value: timeData,
+      value: data.totalHours,
       suffix: "h",
       icon: Clock,
       color: "text-purple-600",
