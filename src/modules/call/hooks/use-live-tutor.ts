@@ -418,8 +418,8 @@ export const useLiveTutor = ({
         }
         const rms = Math.sqrt(sum / inputData.length);
         
-        // Threshold: 0.015 (1.5% of max volume)
-        const threshold = 0.015;
+        // Threshold: 0.018 (1.8% of max volume)
+        const threshold = 0.018;
         const aboveThreshold = rms > threshold;
         
         if (aboveThreshold) {
