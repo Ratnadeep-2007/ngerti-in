@@ -23,7 +23,7 @@ const page = async ({ params }: PageProps) => {
   const { meetingId } = await params;
 
   const queryClient = getQueryClient();
-  queryClient
+  await queryClient
     .prefetchQuery(trpc.meetings.getOne.queryOptions({ id: meetingId }))
     .catch((err) => console.error("Server-side prefetch error:", err));
 

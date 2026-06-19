@@ -1,11 +1,21 @@
 # start.ps1 - Automated startup for Windows
 
-Write-Host "Cleaning up zombie processes on port 3006..." -ForegroundColor Cyan
-$processId = Get-NetTCPConnection -LocalPort 3006 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
-if ($processId) {
-    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
-    Write-Host "Killed process $processId on port 3006." -ForegroundColor Green
+$appPort = 3007
+
+# Clean up zombie processes on both 3006 and 3007 to avoid collisions
+foreach ($port in @(3006, 3007)) {
+    Write-Host "Cleaning up zombie processes on port $port..." -ForegroundColor Cyan
+    $processIds = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess
+    foreach ($pid in $processIds) {
+        if ($pid) {
+            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+            Write-Host "Killed process $pid on port $port." -ForegroundColor Green
+        }
+    }
 }
+
+Write-Host "Cleaning up old Cloudflare tunnel processes..." -ForegroundColor Cyan
+Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
 # 1. Start Cloudflare Tunnel
 Write-Host "Starting Cloudflare tunnel..." -ForegroundColor Cyan
@@ -34,7 +44,7 @@ Remove-Item "cloudflared.log" -ErrorAction SilentlyContinue
 Remove-Item "cloudflared.err" -ErrorAction SilentlyContinue
 
 # Start cloudflared in background and redirect outputs separately
-Start-Process $cloudflaredCmd -ArgumentList "tunnel --url http://localhost:3006" -RedirectStandardOutput "cloudflared.log" -RedirectStandardError "cloudflared.err" -NoNewWindow
+Start-Process $cloudflaredCmd -ArgumentList "tunnel --url http://127.0.0.1:$appPort" -RedirectStandardOutput "cloudflared.log" -RedirectStandardError "cloudflared.err" -NoNewWindow
 
 # 2. Wait for Cloudflare URL
 Write-Host "Waiting for Cloudflare tunnel URL..." -ForegroundColor Cyan

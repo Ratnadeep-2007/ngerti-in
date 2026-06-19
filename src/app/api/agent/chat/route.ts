@@ -8,28 +8,38 @@ export async function POST(req: NextRequest) {
   try {
     const { transcript, meetingId, agentId } = await req.json();
 
+    console.log(
+      `[agent/chat] Request received. meetingId=${meetingId ?? "missing"}, agentId=${agentId ?? "missing"}, transcriptChars=${transcript?.trim?.().length ?? 0}`,
+    );
+
     if (!transcript || !meetingId || !agentId) {
+      console.warn("[agent/chat] Rejecting request: missing required fields.");
       return NextResponse.json(
         { error: "Missing required fields: transcript, meetingId, or agentId" },
         { status: 400 },
       );
     }
 
-    const [existingAgent] = await db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, agentId));
+    const [agentResult, meetingResult] = await Promise.all([
+      db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, agentId)),
+      db
+        .select()
+        .from(meetings)
+        .where(eq(meetings.id, meetingId)),
+    ]);
 
+    const existingAgent = agentResult[0];
     if (!existingAgent) {
+      console.warn(`[agent/chat] Agent not found. agentId=${agentId}`);
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-    const [existingMeeting] = await db
-      .select()
-      .from(meetings)
-      .where(eq(meetings.id, meetingId));
-
+    const existingMeeting = meetingResult[0];
     if (!existingMeeting) {
+      console.warn(`[agent/chat] Meeting not found. meetingId=${meetingId}`);
       return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
     }
 
@@ -41,7 +51,7 @@ ${existingAgent.prompt}
 Current Meeting Context:
 ${existingMeeting.currentPrompt || "No additional context."}
 
-IMPORTANT: Keep your responses highly conversational, concise, and natural to be spoken aloud via TTS. Do not use markdown, lists, or complex formatting. Just plain spoken English. Respond directly to what the user just said.
+IMPORTANT: Keep your response highly conversational and natural for TTS. Reply in 1 or 2 short sentences unless the student explicitly asks for detail. Do not use markdown, lists, or complex formatting. Just plain spoken English. Respond directly to what the user just said.
 `;
 
     const model = getGeminiModel("models/gemini-3.5-flash", {
@@ -49,8 +59,15 @@ IMPORTANT: Keep your responses highly conversational, concise, and natural to be
     });
 
     // Send the user's transcript to Gemini
+    console.log(
+      `[agent/chat] Sending transcript to Gemini. meetingId=${meetingId}, agentName=${existingAgent.name}`,
+    );
     const result = await model.generateContent(transcript);
     const text = result.response.text();
+
+    console.log(
+      `[agent/chat] Gemini response generated. meetingId=${meetingId}, responseChars=${text.length}`,
+    );
 
     return NextResponse.json({ response: text });
   } catch (error) {

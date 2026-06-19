@@ -18,7 +18,7 @@ const page = async () => {
   }
 
   const queryClient = getQueryClient();
-  Promise.all([
+  await Promise.all([
     queryClient.prefetchQuery(trpc.meetings.getLatestMeeting.queryOptions()),
     queryClient.prefetchQuery(trpc.meetings.getDashboardStats.queryOptions()),
     queryClient.prefetchQuery(trpc.meetings.getKnowledgeMap.queryOptions()),

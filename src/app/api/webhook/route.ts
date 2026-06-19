@@ -70,9 +70,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [existingMeeting] = await db
-      .select()
+    const [dbResult] = await db
+      .select({
+        meeting: meetings,
+        agent: agents,
+      })
       .from(meetings)
+      .leftJoin(agents, eq(meetings.agentId, agents.id))
       .where(
         and(
           eq(meetings.id, meetingId),
@@ -83,9 +87,19 @@ export async function POST(req: NextRequest) {
         ),
       );
 
-    if (!existingMeeting) {
+    if (!dbResult || !dbResult.meeting) {
       return NextResponse.json(
         { error: "Meeting not found or already started" },
+        { status: 404 },
+      );
+    }
+
+    const existingMeeting = dbResult.meeting;
+    const existingAgent = dbResult.agent;
+
+    if (!existingAgent) {
+      return NextResponse.json(
+        { error: "Agent not found for the meeting" },
         { status: 404 },
       );
     }
@@ -97,18 +111,6 @@ export async function POST(req: NextRequest) {
         startedAt: new Date(),
       })
       .where(eq(meetings.id, existingMeeting.id));
-
-    const [existingAgent] = await db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, existingMeeting.agentId));
-
-    if (!existingAgent) {
-      return NextResponse.json(
-        { error: "Agent not found for the meeting" },
-        { status: 404 },
-      );
-    }
 
 
     // Agent polling is now disabled as we use Deepgram client-side agent
@@ -226,22 +228,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [existingMeeting] = await db
-      .select()
+    const [dbResult] = await db
+      .select({
+        meeting: meetings,
+        agent: agents,
+      })
       .from(meetings)
+      .leftJoin(agents, eq(meetings.agentId, agents.id))
       .where(eq(meetings.id, channelId));
 
-    if (!existingMeeting) {
+    if (!dbResult || !dbResult.meeting) {
       return NextResponse.json(
         { error: "Meeting not found" },
         { status: 404 },
       );
     }
 
-    const [existingAgent] = await db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, existingMeeting.agentId));
+    const existingMeeting = dbResult.meeting;
+    const existingAgent = dbResult.agent;
 
     if (!existingAgent) {
       return NextResponse.json(

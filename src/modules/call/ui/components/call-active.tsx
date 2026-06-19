@@ -25,7 +25,7 @@ import {
   X,
   Volume2,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { generatedAvatarUri } from "@/lib/avatar";
 import { useTRPC } from "@/trpc/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -232,17 +232,113 @@ export const CallActive = ({
   const participants = useParticipants();
 
   const [isTutorEnabled, setIsTutorEnabled] = useState(false);
-  const toggleTutor = () => setIsTutorEnabled((prev) => !prev);
+  const toggleTutor = () =>
+    setIsTutorEnabled((prev) => {
+      const next = !prev;
+      console.log(`[CallActive] AI Tutor toggled ${next ? "on" : "off"}.`);
+      if (next) {
+        void resumeAudioContext();
+      }
+      return next;
+    });
+  const [isHolding, setIsHolding] = useState(false);
 
-  const { captions, isAgentThinking } = useDeepgramAgent({
+  const { captions, isAgentThinking, isAgentSpeaking, isTutorReady, resumeAudioContext } = useDeepgramAgent({
     meetingId,
     agentId: agentId || "",
     enabled: isTutorEnabled,
+    isHolding,
   });
 
-  const isListening = isTutorEnabled && !isAgentThinking;
+  const startHoldingToTalk = useCallback(
+    (source: "mouse" | "touch" | "keyboard") => {
+      if (!isTutorEnabled) {
+        console.log(`[CallActive] PTT start ignored from ${source}: tutor disabled.`);
+        return;
+      }
+
+      if (!isTutorReady) {
+        console.log(`[CallActive] PTT start ignored from ${source}: tutor connection not ready.`);
+        return;
+      }
+
+      if (isAgentThinking || isAgentSpeaking) {
+        console.log(
+          `[CallActive] PTT start ignored from ${source}: thinking=${isAgentThinking}, speaking=${isAgentSpeaking}.`,
+        );
+        return;
+      }
+
+      // Resume audio context directly inside user gesture callback
+      void resumeAudioContext();
+
+      setIsHolding((prev) => {
+        if (!prev) {
+          console.log(`[CallActive] PTT hold started from ${source}.`);
+        }
+        return true;
+      });
+    },
+    [isTutorEnabled, isTutorReady, isAgentThinking, isAgentSpeaking, resumeAudioContext],
+  );
+
+  const stopHoldingToTalk = useCallback(
+    (source: "mouse" | "touch" | "keyboard" | "mouse-leave") => {
+      setIsHolding((prev) => {
+        if (prev) {
+          console.log(`[CallActive] PTT hold released from ${source}.`);
+        }
+        return false;
+      });
+    },
+    [],
+  );
+
+  // Global Keyboard shortcut: Hold Spacebar to Speak
+  useEffect(() => {
+    if (!isTutorEnabled) {
+      stopHoldingToTalk("keyboard");
+      return;
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input, textarea, or select element
+      const activeEl = document.activeElement;
+      if (
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.tagName === "SELECT" ||
+          activeEl.getAttribute("contenteditable") === "true")
+      ) {
+        return;
+      }
+
+      if (e.key === " ") {
+        e.preventDefault();
+        startHoldingToTalk("keyboard");
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === " ") {
+        e.preventDefault();
+        stopHoldingToTalk("keyboard");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [isTutorEnabled, startHoldingToTalk, stopHoldingToTalk]);
+
+  const isListening = isTutorEnabled && isHolding && !isAgentThinking && !isAgentSpeaking;
   const isThinking = isAgentThinking;
-  const isSpeaking = false;
+  const isSpeaking = isAgentSpeaking;
   const interimTranscript = "";
 
   const lastCaption = captions[captions.length - 1];
@@ -539,6 +635,46 @@ export const CallActive = ({
               className="data-[state=checked]:bg-purple-600"
             />
           </div>
+
+          {/* Hold to Talk Button (only shown when AI Tutor is enabled) */}
+          {isTutorEnabled && (
+            <button
+              onMouseDown={() => startHoldingToTalk("mouse")}
+              onMouseUp={() => stopHoldingToTalk("mouse")}
+              onMouseLeave={() => stopHoldingToTalk("mouse-leave")}
+              onTouchStart={() => startHoldingToTalk("touch")}
+              onTouchEnd={() => stopHoldingToTalk("touch")}
+              disabled={!isTutorReady || isAgentThinking || isAgentSpeaking}
+              className={`px-5 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase select-none transition-all duration-200 flex items-center gap-2 shadow-md border ${
+                !isTutorReady
+                  ? "bg-zinc-800 text-zinc-500 border-zinc-700 cursor-not-allowed"
+                  : isListening
+                  ? "bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse scale-105"
+                  : isAgentThinking
+                  ? "bg-purple-600/30 text-purple-400 border-purple-500/30 cursor-not-allowed"
+                  : isAgentSpeaking
+                  ? "bg-green-600/30 text-green-400 border-green-500/30 cursor-not-allowed"
+                  : "bg-purple-600 hover:bg-purple-700 text-white border-purple-500 hover:scale-105 active:scale-95"
+              }`}
+            >
+              {!isTutorReady ? (
+                <Loader2Icon className="w-4 h-4 animate-spin text-zinc-500" />
+              ) : (
+                <Mic className="w-4 h-4" />
+              )}
+              <span>
+                {!isTutorReady
+                  ? "Connecting AI..."
+                  : isListening
+                  ? "Listening..."
+                  : isAgentThinking
+                  ? "Tutor Thinking..."
+                  : isAgentSpeaking
+                  ? "Tutor Speaking..."
+                  : "Hold to Talk (Space)"}
+              </span>
+            </button>
+          )}
 
           {/* Personality Selector */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#171a1c] border border-white/10 rounded-full hover:border-purple-500/30 transition-all duration-200 shadow-md">

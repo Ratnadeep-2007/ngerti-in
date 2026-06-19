@@ -71,20 +71,24 @@ export async function POST(req: NextRequest) {
 
   console.log(`[Whiteboard API] Whiteboard context compilation complete. Texts: ${texts.length}, OCR length: ${ocrText.length}`);
 
-  // 4. Query DB untuk agent dan meeting
-  let meeting;
+  // 4. Query DB untuk agent dan meeting via a single join query
+  let dbResult;
   try {
     const results = await db
-      .select()
+      .select({
+        meeting: meetings,
+        agent: agents,
+      })
       .from(meetings)
+      .leftJoin(agents, eq(meetings.agentId, agents.id))
       .where(eq(meetings.id, meetingId));
-    meeting = results[0];
+    dbResult = results[0];
   } catch (dbErr) {
-    console.error(`[Whiteboard API] Database error fetching meeting with ID ${meetingId}:`, dbErr);
+    console.error(`[Whiteboard API] Database error fetching meeting/agent for ID ${meetingId}:`, dbErr);
     return NextResponse.json({ error: "Internal database error" }, { status: 500 });
   }
 
-  if (!meeting) {
+  if (!dbResult || !dbResult.meeting) {
     console.warn(`[Whiteboard API] Meeting not found: ${meetingId}`);
     return NextResponse.json(
       { error: "Meeting tidak ditemukan" },
@@ -92,20 +96,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let agent;
-  try {
-    const results = await db
-      .select()
-      .from(agents)
-      .where(eq(agents.id, meeting.agentId));
-    agent = results[0];
-  } catch (dbErr) {
-    console.error(`[Whiteboard API] Database error fetching agent with ID ${meeting.agentId}:`, dbErr);
-    return NextResponse.json({ error: "Internal database error" }, { status: 500 });
-  }
+  const meeting = dbResult.meeting;
+  const agent = dbResult.agent;
 
   if (!agent) {
-    console.warn(`[Whiteboard API] AI Agent not found: ${meeting.agentId} for meeting ${meetingId}`);
+    console.warn(`[Whiteboard API] AI Agent not found for meeting ${meetingId}`);
     return NextResponse.json(
       { error: "AI Agent tidak ditemukan" },
       { status: 404 }
@@ -146,35 +141,10 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
     updatePayload.whiteboardSnapshot = imageBase64;
   }
 
-  try {
-    await db
-      .update(meetings)
-      .set(updatePayload)
-      .where(eq(meetings.id, meetingId));
-    console.log(`[Whiteboard API] Successfully saved currentPrompt and snapshot to DB for meeting ${meetingId}`);
-  } catch (dbUpdateErr) {
-    console.error(`[Whiteboard API] Database update failed for meeting ${meetingId}:`, dbUpdateErr);
-  }
-
-  // 6. Suggest YouTube Videos (RAG-enhanced context)
-  try {
-    const videos = await suggestYouTubeVideos(updatedPrompt);
-    if (videos.length > 0) {
-      await db
-        .update(meetings)
-        .set({
-          suggestedVideos: JSON.stringify(videos),
-          updatedAt: new Date(),
-        })
-        .where(eq(meetings.id, meetingId));
-      console.log(`[Whiteboard API] Successfully suggested and saved ${videos.length} YT videos for meeting ${meetingId}`);
-    }
-  } catch (err) {
-    console.error(`[Whiteboard API] Failed to suggest or save YT videos for meeting ${meetingId}:`, err);
-  }
-
-  // 7. Generate explanation of whiteboard contents in Tutor's Persona
+  // 6. Generate YouTube suggestions and explanation in parallel
+  let videos: any[] = [];
   let aiExplanationText = "";
+
   try {
     const explanationPrompt = `
       You are the AI Tutor named ${agent.name}. Your subject is ${agent.subject}.
@@ -194,30 +164,51 @@ Note: The above whiteboard content and textbook excerpts are the latest informat
       IMPORTANT: Keep your response short, highly conversational, and suitable for being read aloud via Text-to-Speech (concise sentences, no markdown lists or bullet formatting, maximum 3 sentences).
     `.trim();
 
-    const explanationModel = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
-    
-    let explanationResult;
-    if (imageBase64) {
-      const pureBase64 = imageBase64.startsWith("data:")
-        ? imageBase64.split(",")[1]
-        : imageBase64;
-        
-      explanationResult = await explanationModel.generateContent([
-        explanationPrompt,
-        {
-          inlineData: {
-            data: pureBase64,
-            mimeType: "image/jpeg"
-          }
+    const [videosResult, explanationResult] = await Promise.all([
+      suggestYouTubeVideos(updatedPrompt),
+      (async () => {
+        const explanationModel = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
+        if (imageBase64) {
+          const pureBase64 = imageBase64.startsWith("data:")
+            ? imageBase64.split(",")[1]
+            : imageBase64;
+            
+          const res = await explanationModel.generateContent([
+            explanationPrompt,
+            {
+              inlineData: {
+                data: pureBase64,
+                mimeType: "image/jpeg"
+              }
+            }
+          ]);
+          return res.response.text();
+        } else {
+          const res = await explanationModel.generateContent(explanationPrompt);
+          return res.response.text();
         }
-      ]);
-    } else {
-      explanationResult = await explanationModel.generateContent(explanationPrompt);
-    }
-    
-    aiExplanationText = explanationResult.response.text();
+      })()
+    ]);
+
+    videos = videosResult || [];
+    aiExplanationText = explanationResult || "";
   } catch (err) {
-    console.error("Failed to generate whiteboard AI explanation:", err);
+    console.error("[Whiteboard API] Error during concurrent whiteboard processes:", err);
+  }
+
+  // 7. Save everything (prompt, snapshot, and suggested videos) to DB in a single consolidated update
+  if (videos.length > 0) {
+    updatePayload.suggestedVideos = JSON.stringify(videos);
+  }
+
+  try {
+    await db
+      .update(meetings)
+      .set(updatePayload)
+      .where(eq(meetings.id, meetingId));
+    console.log(`[Whiteboard API] Consolidated save of snapshot, prompt, and ${videos.length} video suggestions to DB for meeting ${meetingId}`);
+  } catch (dbUpdateErr) {
+    console.error(`[Whiteboard API] Consolidated database update failed for meeting ${meetingId}:`, dbUpdateErr);
   }
 
   return NextResponse.json({
