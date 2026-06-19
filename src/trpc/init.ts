@@ -11,12 +11,6 @@ export const createTRPCContext = cache(async () => {
   const h = await headers();
   const session = await getSessionCore(h);
 
-  if (!session) {
-    console.log("❌ [TRPC Context] No session found");
-  } else {
-    console.log("✅ [TRPC Context] Session found for user:", session.user.id);
-  }
-
   return {
     session,
     headers: h,
@@ -48,19 +42,23 @@ const t = initTRPC.context<TRPCContext>().create({
 export const createTRPCRouter = t.router;
 export const createCallerFactory = t.createCallerFactory;
 export const baseProcedure = t.procedure;
-export const protectedProcedure = baseProcedure.use(async ({ ctx, next, path }) => {
-  if (!ctx.session) {
-    console.warn(`🔐 [TRPC] Unauthorized attempt to path: ${path} - No session found`);
-    throw new TRPCError({
-      code: "UNAUTHORIZED",
-      message: "You must be logged in to access this resource.",
-    });
-  }
+export const protectedProcedure = baseProcedure.use(
+  async ({ ctx, next, path }) => {
+    if (!ctx.session) {
+      console.warn(
+        `🔐 [TRPC] Unauthorized attempt to path: ${path} - No session found`,
+      );
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "You must be logged in to access this resource.",
+      });
+    }
 
-  return next({
-    ctx: {
-      ...ctx,
-      userId: ctx.session,
-    },
-  });
-});
+    return next({
+      ctx: {
+        ...ctx,
+        userId: ctx.session,
+      },
+    });
+  },
+);

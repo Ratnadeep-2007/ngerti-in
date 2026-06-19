@@ -84,7 +84,7 @@ const meetingsProcessing = inngest.createFunction(
     const transcript = await step.run("fetch-and-parse-transcript", async () => {
       console.log(`[Inngest meetingsProcessing] Fetching transcript from ${transcriptUrl} for meeting ${meeting_id}`);
       try {
-        let urlToFetch = transcriptUrl;
+        const urlToFetch = transcriptUrl;
         let res = await fetch(urlToFetch);
         if (!res.ok) {
           if (res.status === 404) {

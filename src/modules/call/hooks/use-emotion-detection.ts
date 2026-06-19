@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import * as faceapi from "face-api.js";
 import { useCallStateHooks } from "@stream-io/video-react-sdk";
+
+type FaceApiModule = typeof import("face-api.js");
 
 interface EmotionDetectionResult {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -19,7 +20,7 @@ export const useEmotionDetection = (
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isModelsLoaded, setIsModelsLoaded] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
-  
+  const faceApiRef = useRef<FaceApiModule | null>(null);
   const consecutiveConfusionCount = useRef(0);
   const onConfusedRef = useRef(onConfused);
 
@@ -35,7 +36,9 @@ export const useEmotionDetection = (
 
     const loadModels = async () => {
       try {
-        // Models are served from public/models
+        const faceapi = await import("face-api.js");
+        faceApiRef.current = faceapi;
+
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
           faceapi.nets.faceExpressionNet.loadFromUri("/models"),
@@ -68,7 +71,10 @@ export const useEmotionDetection = (
     if (!isModelsLoaded || !enabled || !mediaStream) return;
 
     const runDetection = async () => {
-      if (!videoRef.current || videoRef.current.readyState !== 4) return;
+      const faceapi = faceApiRef.current;
+      if (!faceapi || !videoRef.current || videoRef.current.readyState !== 4) {
+        return;
+      }
 
       try {
         const detections = await faceapi
@@ -80,24 +86,22 @@ export const useEmotionDetection = (
 
         if (detections) {
           const expressions = detections.expressions;
-          
-          // Find dominant emotion
-          const sorted = Object.entries(expressions).sort((a, b) => b[1] - a[1]);
+
+          const sorted = Object.entries(expressions).sort(
+            (a, b) => b[1] - a[1],
+          );
           const dominant = sorted[0][0];
           setCurrentEmotion(dominant);
 
-          // Logic for confusion: high sadness, fear, or frustration (angry)
-          // We trigger if negative emotions are high
-          const confusionScore = expressions.sad + expressions.fearful + expressions.angry;
-          
+          const confusionScore =
+            expressions.sad + expressions.fearful + expressions.angry;
+
           if (confusionScore > 0.5) {
             consecutiveConfusionCount.current += 1;
-            
-            // Trigger after ~6 seconds of consistent confusion (3 frames * 2s)
+
             if (consecutiveConfusionCount.current >= 3) {
-              console.log("Proactive confusion detected, triggering intervention...");
               onConfusedRef.current();
-              consecutiveConfusionCount.current = 0; // Reset after trigger
+              consecutiveConfusionCount.current = 0;
             }
           } else {
             consecutiveConfusionCount.current = 0;

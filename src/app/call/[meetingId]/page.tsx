@@ -1,5 +1,3 @@
-import { headers } from "next/headers";
-import { auth, getSessionCore } from "@/lib/auth";
 import React from "react";
 import { redirect } from "next/navigation";
 import { getQueryClient, trpc } from "@/trpc/server";
@@ -8,6 +6,7 @@ import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { CallView } from "@/modules/call/ui/views/call-view";
 import { LoaderCircle } from "lucide-react";
+import { createTRPCContext } from "@/trpc/init";
 
 interface PageProps {
   params: Promise<{
@@ -16,7 +15,7 @@ interface PageProps {
 }
 
 const page = async ({ params }: PageProps) => {
-  const session = await getSessionCore(await headers());
+  const { session } = await createTRPCContext();
   if (!session) {
     redirect("/sign-in");
   }
@@ -24,9 +23,9 @@ const page = async ({ params }: PageProps) => {
   const { meetingId } = await params;
 
   const queryClient = getQueryClient();
-  queryClient.prefetchQuery(
-    trpc.meetings.getOne.queryOptions({ id: meetingId }),
-  ).catch((err) => console.error("Server-side prefetch error:", err));
+  queryClient
+    .prefetchQuery(trpc.meetings.getOne.queryOptions({ id: meetingId }))
+    .catch((err) => console.error("Server-side prefetch error:", err));
 
   return (
     <>

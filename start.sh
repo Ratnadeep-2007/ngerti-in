@@ -21,7 +21,7 @@ if ! command -v cloudflared &> /dev/null; then
     echo "Error: cloudflared is not installed or not in your PATH. Please install it with 'brew install cloudflared' and try again."
     exit 1
 fi
-cloudflared tunnel --url http://localhost:3006 > cloudflared.log 2>&1 &
+cloudflared tunnel --protocol http2 --url http://localhost:3006 > cloudflared.log 2>&1 &
 
 # 2. Wait for Cloudflare URL
 echo "Waiting for Cloudflare tunnel URL..."

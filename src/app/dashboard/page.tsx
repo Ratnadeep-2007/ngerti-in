@@ -1,5 +1,3 @@
-import { headers } from "next/headers";
-import { auth, getSessionCore } from "@/lib/auth";
 import React from "react";
 import { redirect } from "next/navigation";
 import QuickAccess from "@/modules/main-dashboard/views/quick-access";
@@ -11,22 +9,22 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { LoaderCircle } from "lucide-react";
+import { createTRPCContext } from "@/trpc/init";
 const page = async () => {
-  const session = await getSessionCore(await headers());
+  const { session } = await createTRPCContext();
 
   if (!session) {
     redirect("/sign-in");
   }
 
   const queryClient = getQueryClient();
-  // Prefetch queries asynchronously to allow Next.js server components to stream HTML immediately (0ms blocking render)
   Promise.all([
     queryClient.prefetchQuery(trpc.meetings.getLatestMeeting.queryOptions()),
-    queryClient.prefetchQuery(trpc.meetings.getHours.queryOptions()),
-    queryClient.prefetchQuery(trpc.agents.getMany.queryOptions({})),
+    queryClient.prefetchQuery(trpc.meetings.getDashboardStats.queryOptions()),
     queryClient.prefetchQuery(trpc.meetings.getKnowledgeMap.queryOptions()),
-    queryClient.prefetchQuery(trpc.meetings.getDiscoverableMeetings.queryOptions()),
-    queryClient.prefetchQuery(trpc.meetings.getMany.queryOptions({})),
+    queryClient.prefetchQuery(
+      trpc.meetings.getDiscoverableMeetings.queryOptions(),
+    ),
   ]).catch((err) => console.error("Server-side prefetch error:", err));
   return (
     <div className="p-8 flex-col flex gap-8">
