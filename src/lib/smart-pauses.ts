@@ -22,17 +22,17 @@ export function pickCheckpointMode(): CheckpointMode {
 }
 
 export function buildSmartPauseSchedule(
-  startTime: number,
-  endTime: number,
+  duration: number,
   difficulty: QuizDifficulty = "medium",
   maxBreakpoints = Number.POSITIVE_INFINITY
 ): SmartPauseCheckpoint[] {
-  if (endTime <= startTime) return [];
+  const firstCheckpoint = 10 * 60; // First checkpoint ALWAYS at 10:00
+  if (duration <= firstCheckpoint) return [];
 
   const intervalSeconds = getSmartPauseIntervalSeconds(difficulty);
   const checkpoints: SmartPauseCheckpoint[] = [];
 
-  for (let timestamp = startTime + intervalSeconds; timestamp < endTime; timestamp += intervalSeconds) {
+  for (let timestamp = firstCheckpoint; timestamp < duration; timestamp += intervalSeconds) {
     checkpoints.push({
       timestamp: Math.round(timestamp),
       checkpointMode: pickCheckpointMode(),
@@ -41,13 +41,6 @@ export function buildSmartPauseSchedule(
     if (checkpoints.length >= maxBreakpoints) {
       return checkpoints;
     }
-  }
-
-  if (checkpoints.length === 0) {
-    checkpoints.push({
-      timestamp: Math.max(startTime + 1, Math.round(startTime + (endTime - startTime) / 2)),
-      checkpointMode: pickCheckpointMode(),
-    });
   }
 
   return checkpoints;

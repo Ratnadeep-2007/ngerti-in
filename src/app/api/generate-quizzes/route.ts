@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateQuizzes, generateQuizzesForRange } from "@/lib/groq";
+import { generateSingleBreakpoint } from "@/lib/groq";
 import { TranscriptSegment, QuizDifficulty } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
-    const { transcript, maxBreakpoints, questionsPerBreakpoint, startTime, endTime, aiWindowEndSec, difficulty } =
+    const { transcript, maxBreakpoints, questionsPerBreakpoint, startTime, endTime, aiWindowEndSec, difficulty, videoTitle } =
       (await request.json()) as {
         transcript: TranscriptSegment[];
         maxBreakpoints: number;
@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
         endTime?: number;
         aiWindowEndSec?: number;
         difficulty?: QuizDifficulty;
+        videoTitle?: string;
       };
 
     if (!transcript || !maxBreakpoints || !questionsPerBreakpoint) {
@@ -22,12 +23,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const breakpoints =
-      startTime !== undefined && endTime !== undefined
-        ? await generateQuizzesForRange(transcript, startTime, endTime, maxBreakpoints, questionsPerBreakpoint, difficulty ?? "medium", aiWindowEndSec)
-        : await generateQuizzes(transcript, maxBreakpoints, questionsPerBreakpoint, difficulty ?? "medium");
+    if (startTime !== undefined && endTime !== undefined) {
+      const bp = await generateSingleBreakpoint(
+        transcript,
+        startTime,
+        endTime,
+        questionsPerBreakpoint,
+        difficulty ?? "medium",
+        videoTitle ?? "Learning Video"
+      );
+      return NextResponse.json({ breakpoints: bp ? [bp] : [] });
+    }
 
-    return NextResponse.json({ breakpoints });
+    return NextResponse.json(
+      { error: "startTime and endTime are required for JIT generation" },
+      { status: 400 }
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to generate quizzes";

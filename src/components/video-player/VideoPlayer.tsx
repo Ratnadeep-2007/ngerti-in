@@ -84,6 +84,8 @@ function VolumeMuteIcon() {
 
 export interface VideoPlayerHandle {
   seekTo: (seconds: number) => void;
+  pause: () => void;
+  play: () => void;
 }
 
 interface VideoPlayerProps {
@@ -240,11 +242,14 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
   }, [checkForBreakpoint]);
 
   useImperativeHandle(ref, () => ({
-    seekTo: (s: number) => {
-      handleSeek(s);
-      setPlaying(true);
+    seekTo: (seconds: number) => {
+      playerRef.current?.seekTo(seconds, "seconds");
+      setCurrentTime(seconds);
+      if (!playing) setPlaying(true);
     },
-  }), [handleSeek]);
+    pause: () => setPlaying(false),
+    play: () => setPlaying(true),
+  }));
 
   const handleContainerKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {

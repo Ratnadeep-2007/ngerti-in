@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
-import type { TextQuestion } from "@/lib/types";
+import type { TextQuestion, CodeQuestion } from "@/lib/types";
 
 const GROQ_GRADE_MODEL = process.env.GROQ_GRADE_MODEL ?? "llama-3.1-70b-versatile";
 
@@ -14,8 +14,7 @@ function isOpenEndedQuestion(
   return (
     typeof question === "object" &&
     question !== null &&
-    "type" in question &&
-    (question as { type?: string }).type === "text"
+    ("type" in question && ((question as { type?: string }).type === "text" || (question as { type?: string }).type === "code"))
   );
 }
 
@@ -28,12 +27,20 @@ function tokenize(value: string): string[] {
 }
 
 function localSemanticFallback(
-  question: TextQuestion,
+  question: TextQuestion | CodeQuestion,
   answer: string
 ): { correct: boolean; reason: string } {
   const normalizedAnswer = normalizeText(answer);
   if (!normalizedAnswer) {
     return { correct: false, reason: "No answer was provided." };
+  }
+
+  if (question.type === "code") {
+    // Basic local fallback for code: just ensure it's not empty and maybe contains standard characters
+    if (answer.trim().length > 5) {
+      return { correct: true, reason: "Code was submitted. (Fallback offline check)" };
+    }
+    return { correct: false, reason: "Code snippet too short." };
   }
 
   const expected = question.expectedAnswer ? normalizeText(question.expectedAnswer) : "";
@@ -68,11 +75,28 @@ function localSemanticFallback(
 }
 
 async function gradeWithGroq(
-  question: TextQuestion,
+  question: TextQuestion | CodeQuestion,
   answer: string
 ): Promise<{ correct: boolean; reason: string } | null> {
   const client = getClient();
-  const prompt = `You are a strict but fair semantic grader for an educational platform.
+  
+  const isCode = question.type === "code";
+  const systemRolePrompt = isCode
+    ? "You are an expert software engineer and code reviewer evaluating a student's code snippet."
+    : "You are a strict but fair semantic grader for an educational platform.";
+    
+  const rules = isCode
+    ? `- Evaluate if the code syntactically resembles the expected language.
+- Mark incorrect if they obviously wrote code in a completely different language (e.g. wrote Python when asked for C).
+- Mark correct if the code solves the prompt's request, even if it is simple or basic.
+- Mark incorrect if the code is completely unrelated nonsense or fails to answer the prompt.`
+    : `- Accept paraphrases and semantically equivalent answers.
+- Do not require exact wording.
+- Mark correct if the answer demonstrates the same concept, even if phrased differently.
+- Mark incorrect if it is unrelated, contradicts the lesson, or is too vague.
+- Mark incorrect if the user intentionally gives a wrong or nonsense answer.`;
+
+  const prompt = `${systemRolePrompt}
 Return ONLY valid JSON with:
 {
   "correct": boolean,
@@ -80,19 +104,15 @@ Return ONLY valid JSON with:
 }
 
 Rules:
-- Accept paraphrases and semantically equivalent answers.
-- Do not require exact wording.
-- Mark correct if the answer demonstrates the same concept, even if phrased differently.
-- Mark incorrect if it is unrelated, contradicts the lesson, or is too vague.
-- Mark incorrect if the user intentionally gives a wrong or nonsense answer.
+${rules}
 - Explain your reasoning briefly.
 
 Question Context:
 ${JSON.stringify({
   question: question.question,
   explanation: question.explanation ?? "",
-  expectedAnswer: question.expectedAnswer ?? "",
-  acceptedKeywords: question.acceptedKeywords ?? [],
+  expectedAnswer: (question as TextQuestion).expectedAnswer ?? "",
+  acceptedKeywords: (question as TextQuestion).acceptedKeywords ?? [],
   type: question.type,
 })}
 

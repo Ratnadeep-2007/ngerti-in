@@ -475,6 +475,10 @@ function QuizPopupInner({
   const { t } = useTranslation();
   const questions: QuizQuestion[] = getBreakpointQuestions(breakpoint, isRetry);
 
+  if (!questions || questions.length === 0) {
+    return null;
+  }
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<AnswerState[]>(() =>
     buildInitialAnswers(questions.length).map((answer, index) => {
@@ -551,30 +555,33 @@ function QuizPopupInner({
     if (currentQuestion.type === "mcq") {
       if (currentAnswer.selectedIndex === null) return;
       isCorrect = currentAnswer.selectedIndex === currentQuestion.correct;
-    } else if (currentQuestion.type === "text") {
+    } else if (currentQuestion.type === "text" || currentQuestion.type === "code") {
       setIsCheckingAnswer(true);
+      const answerPayload = currentQuestion.type === "text" ? currentAnswer.textValue : currentAnswer.codeValue;
       try {
         const response = await fetch("/api/grade-answer", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             question: currentQuestion,
-            answer: currentAnswer.textValue,
+            answer: answerPayload,
           }),
         });
         if (response.ok) {
           const result = (await response.json()) as { correct?: boolean };
           isCorrect = Boolean(result.correct);
         } else {
-          isCorrect = isLikelyCorrectText(currentAnswer.textValue, currentQuestion);
+          isCorrect = currentQuestion.type === "text" 
+            ? isLikelyCorrectText(answerPayload, currentQuestion)
+            : isLikelyCorrectCode(answerPayload, currentQuestion);
         }
       } catch {
-        isCorrect = isLikelyCorrectText(currentAnswer.textValue, currentQuestion);
+        isCorrect = currentQuestion.type === "text" 
+          ? isLikelyCorrectText(answerPayload, currentQuestion)
+          : isLikelyCorrectCode(answerPayload, currentQuestion);
       } finally {
         setIsCheckingAnswer(false);
       }
-    } else if (currentQuestion.type === "code") {
-      isCorrect = isLikelyCorrectCode(currentAnswer.codeValue, currentQuestion);
     }
 
     setAnswers((prev) =>

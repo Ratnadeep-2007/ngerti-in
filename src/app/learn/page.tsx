@@ -7,6 +7,7 @@ import { COMPANIONS } from "@/lib/companions";
 import { getAllLanguages } from "@/lib/languages";
 import type { LearningMode, QuizDifficulty } from "@/lib/types";
 import { getQuizPlan } from "@/lib/quiz-planner";
+import { buildSmartPauseSchedule } from "@/lib/smart-pauses";
 import type {
   TranscriptSegment,
   VideoMetadata,
@@ -138,29 +139,16 @@ function HomePageInner() {
       setCurrentStep(2);
 
       const duration = extractData.metadata.duration;
-      const quizPlan = getQuizPlan(duration, quizDifficulty);
-      const initialEnd = quizPlan.initialWindowSeconds;
+      const schedule = buildSmartPauseSchedule(duration, quizDifficulty);
+      const emptyBreakpoints: Breakpoint[] = schedule.map((sch) => ({
+        timestamp: sch.timestamp,
+        topic: "Learning Checkpoint",
+        questions: [],
+        primaryQuestions: [],
+        retryQuestions: [],
+        checkpointMode: sch.checkpointMode,
+      }));
 
-      const quizzesRes = await fetch("/api/generate-quizzes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: extractData.transcript,
-          maxBreakpoints: quizPlan.maxBreakpoints,
-          questionsPerBreakpoint: quizPlan.questionsPerBreakpoint,
-          startTime: 0,
-          endTime: duration,
-          aiWindowEndSec: initialEnd,
-          difficulty: quizDifficulty,
-        }),
-      });
-
-      if (!quizzesRes.ok) {
-        const data = await quizzesRes.json();
-        throw new Error(data.error || "Failed to generate quizzes");
-      }
-
-      const quizzesData = (await quizzesRes.json()) as { breakpoints: Breakpoint[] };
       setCurrentStep(4);
 
       // Step 4: Translate
@@ -169,7 +157,7 @@ function HomePageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcript: extractData.transcript,
-          breakpoints: quizzesData.breakpoints,
+          breakpoints: emptyBreakpoints,
           sourceLocale: extractData.detectedLocale,
           targetLocale,
         }),
@@ -204,12 +192,12 @@ function HomePageInner() {
         companionId: mode === "jolly" ? companionId : null,
         originalTranscript: extractData.transcript,
         translatedContent: translateData.translatedContent,
-        originalBreakpoints: quizzesData.breakpoints,
+        originalBreakpoints: emptyBreakpoints,
         quizFrequency: extractData.quizFrequency,
         quizDifficulty,
         userName: userName.trim(),
         rawTranscript: extractData.transcript,
-        quizzesGeneratedUpTo: initialEnd,
+        quizzesGeneratedUpTo: duration,
       });
 
       // Brief pause so "Ready!" is visible

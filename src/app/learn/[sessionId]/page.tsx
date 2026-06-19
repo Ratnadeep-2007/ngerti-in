@@ -88,25 +88,6 @@ function breakpointNeedsRepair(breakpoint: Breakpoint): boolean {
   });
 }
 
-function breakpointsNeedSmartPauseRepair(session: Session): boolean {
-  const transcript = session.rawTranscript ?? session.originalTranscript;
-  if (transcript.length === 0 || session.translatedContent.breakpoints.length === 0) return false;
-
-  const windowEnd = session.quizzesGeneratedUpTo ?? Math.min(
-    session.metadata.duration,
-    getQuizPlan(session.metadata.duration, session.quizDifficulty).initialWindowSeconds
-  );
-  const expected = buildSmartPauseSchedule(0, windowEnd, session.quizDifficulty);
-
-  if (expected.length !== session.translatedContent.breakpoints.length) return true;
-
-  return session.translatedContent.breakpoints.some((breakpoint, index) => {
-    const expectedTimestamp = expected[index]?.timestamp;
-    return typeof expectedTimestamp === "number"
-      ? Math.abs(breakpoint.timestamp - expectedTimestamp) > 1
-      : true;
-  });
-}
 
 function resizeBooleanArray(values: boolean[], targetLength: number): boolean[] {
   return Array.from({ length: targetLength }, (_, index) => values[index] ?? false);
@@ -144,7 +125,7 @@ export default function LearnSessionPage() {
   const [finalQuizGenError, setFinalQuizGenError] = useState(false);
 
   // ── Lazy prefetch state ───────────────────────────────────────────────────
-  const prefetchInProgress = useRef(false);
+  const [isGeneratingJIT, setIsGeneratingJIT] = useState(false);
   const repairInProgress = useRef(false);
 
   // ── Background final quiz generation ────────────────────────────────────
@@ -179,85 +160,7 @@ export default function LearnSessionPage() {
     setSession(s);
   }, [sessionId]);
 
-  // Repair any stale sessions that still contain blank quiz options.
-  useEffect(() => {
-    if (!session || repairInProgress.current) return;
-    if (session.originalTranscript.length === 0 || session.translatedContent.breakpoints.length === 0) return;
 
-    const needsRepair =
-      session.translatedContent.breakpoints.some(breakpointNeedsRepair) ||
-      breakpointsNeedSmartPauseRepair(session);
-    if (!needsRepair) return;
-
-    repairInProgress.current = true;
-
-    (async () => {
-      try {
-        const breakpointsToRegenerate = Math.max(1, session.translatedContent.breakpoints.length);
-        const quizzesRes = await fetch("/api/generate-quizzes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transcript: session.rawTranscript ?? session.originalTranscript,
-            maxBreakpoints: breakpointsToRegenerate,
-            questionsPerBreakpoint: getQuizPlan(session.metadata.duration, sessionDifficulty).questionsPerBreakpoint,
-            startTime: 0,
-            endTime: session.metadata.duration,
-            difficulty: sessionDifficulty,
-          }),
-        });
-
-        if (!quizzesRes.ok) return;
-
-        const quizzesData = (await quizzesRes.json()) as { breakpoints: Breakpoint[] };
-        if (quizzesData.breakpoints.length === 0) return;
-
-        const translateRes = await fetch("/api/translate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transcript: session.rawTranscript ?? session.originalTranscript,
-            breakpoints: quizzesData.breakpoints,
-            sourceLocale: session.sourceLocale,
-            targetLocale: session.targetLocale,
-          }),
-        });
-
-        if (!translateRes.ok) return;
-
-        const translateData = (await translateRes.json()) as {
-          translatedContent: TranslatedContent;
-          fallback?: boolean;
-        };
-
-        if (!translateData.translatedContent?.breakpoints?.length) return;
-
-        const repairedTranslated = translateData.translatedContent;
-        const repairedOriginal = quizzesData.breakpoints;
-        const nextLength = repairedTranslated.breakpoints.length;
-        const repairedProgress = {
-          ...session.progress,
-          breakpointsCleared: resizeBooleanArray(session.progress.breakpointsCleared, nextLength),
-          attemptsPerBreakpoint: resizeNumberArray(session.progress.attemptsPerBreakpoint, nextLength),
-          currentBreakpointIndex: Math.min(session.progress.currentBreakpointIndex, Math.max(0, nextLength - 1)),
-        };
-
-        const updated = updateSession(session.id, {
-          translatedContent: repairedTranslated,
-          originalBreakpoints: repairedOriginal,
-          progress: repairedProgress,
-          finalQuiz: undefined,
-        });
-        if (updated) {
-          setSession(updated);
-        }
-      } catch (error) {
-        console.error("Failed to repair stale quiz options:", error);
-      } finally {
-        repairInProgress.current = false;
-      }
-    })();
-  }, [session]);
 
   // ── Track cursor position for speech bubble placement ────────────────────
   useEffect(() => {
@@ -299,91 +202,7 @@ export default function LearnSessionPage() {
     []
   );
 
-  // ── Lazy prefetch next quiz window ───────────────────────────────────────
 
-  const prefetchNextWindow = useCallback(async () => {
-    if (prefetchInProgress.current || !session?.rawTranscript) return;
-    const generatedUpTo = session.quizzesGeneratedUpTo ?? 0;
-    if (generatedUpTo >= session.metadata.duration) return;
-
-    const quizPlan = getQuizPlan(session.metadata.duration, sessionDifficulty);
-    prefetchInProgress.current = true;
-    try {
-      const nextEnd = Math.min(generatedUpTo + quizPlan.prefetchWindowSeconds, session.metadata.duration);
-      const windowDuration = nextEnd - generatedUpTo;
-      const totalDuration = session.metadata.duration;
-      const maxBp = Math.max(
-        1,
-        Math.ceil(quizPlan.maxBreakpoints * (windowDuration / totalDuration))
-      );
-
-      // 1. Generate quizzes for next window
-      const quizzesRes = await fetch("/api/generate-quizzes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: session.rawTranscript,
-          maxBreakpoints: maxBp,
-          questionsPerBreakpoint: quizPlan.questionsPerBreakpoint,
-          startTime: generatedUpTo,
-          endTime: nextEnd,
-          difficulty: sessionDifficulty,
-        }),
-      });
-      if (!quizzesRes.ok) return;
-      const { breakpoints: newBps } = (await quizzesRes.json()) as { breakpoints: Breakpoint[] };
-      if (newBps.length === 0) {
-        const updated = updateSession(session.id, { quizzesGeneratedUpTo: nextEnd });
-        if (updated) setSession(updated);
-        return;
-      }
-
-      // 2. Translate new breakpoints
-      const translateRes = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: session.rawTranscript,
-          breakpoints: newBps,
-          sourceLocale: session.sourceLocale,
-          targetLocale: session.targetLocale,
-        }),
-      });
-      if (!translateRes.ok) return;
-      const data = await translateRes.json() as { translatedContent: TranslatedContent, fallback?: boolean };
-      if (data.fallback) return;
-      const newTranslated = data.translatedContent;
-
-      // 3. Merge sorted breakpoints (replace old stub breakpoints)
-      const existingBps = session.translatedContent.breakpoints.filter(
-        bp => bp.timestamp <= generatedUpTo || bp.timestamp > nextEnd
-      );
-      const mergedBps = [...existingBps, ...newTranslated.breakpoints].sort(
-        (a, b) => a.timestamp - b.timestamp
-      );
-      const mergedTranslatedContent = {
-        ...session.translatedContent,
-        breakpoints: mergedBps,
-      };
-
-      // 4. Progress arrays stay the same size (they were initialized to full size with the stubs)
-      const mergedProgress = {
-        ...session.progress,
-      };
-
-      // 5. Persist and update state
-      const updated = updateSession(session.id, {
-        translatedContent: mergedTranslatedContent,
-        progress: mergedProgress,
-        quizzesGeneratedUpTo: nextEnd,
-      });
-      if (updated) setSession(updated);
-    } catch (err) {
-      console.error("Prefetch next window failed:", err);
-    } finally {
-      prefetchInProgress.current = false;
-    }
-  }, [session]);
 
   // ── Progress helpers ──────────────────────────────────────────────────────
 
@@ -401,25 +220,93 @@ export default function LearnSessionPage() {
   const handleProgressUpdate = useCallback(
     (seconds: number) => {
       saveProgress({ lastPlaybackPosition: seconds });
-
-      // Trigger prefetch when 5 min away from the last-generated timestamp
-      const generatedUpTo = session?.quizzesGeneratedUpTo ?? 0;
-      const timeUntilEnd = generatedUpTo - seconds;
-      if (timeUntilEnd > 0 && timeUntilEnd <= 5 * 60) {
-        prefetchNextWindow();
-      }
     },
-    [saveProgress, session, prefetchNextWindow]
+    [saveProgress]
   );
 
   const handleBreakpointReached = useCallback(
-    (index: number) => {
+    async (index: number) => {
       if (!session) return;
+
+      const bp = session.translatedContent.breakpoints[index];
+      let bpReady = bp;
+
+      if (bp.questions.length === 0) {
+        setIsGeneratingJIT(true);
+        videoPlayerRef.current?.pause();
+
+        try {
+          const prevTimestamp = index === 0 ? 0 : session.translatedContent.breakpoints[index - 1].timestamp;
+          const quizPlan = getQuizPlan(session.metadata.duration, sessionDifficulty);
+
+          const res = await fetch("/api/generate-quizzes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transcript: session.rawTranscript || session.originalTranscript,
+              maxBreakpoints: 1,
+              questionsPerBreakpoint: quizPlan.questionsPerBreakpoint,
+              startTime: prevTimestamp,
+              endTime: bp.timestamp,
+              difficulty: sessionDifficulty,
+              videoTitle: session.metadata.title,
+            }),
+          });
+
+          if (res.ok) {
+            const { breakpoints } = (await res.json()) as { breakpoints: Breakpoint[] };
+            let newBp = breakpoints[0];
+            
+            if (newBp && session.sourceLocale !== session.targetLocale) {
+              const transRes = await fetch("/api/translate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  transcript: [],
+                  breakpoints: [newBp],
+                  sourceLocale: session.sourceLocale,
+                  targetLocale: session.targetLocale,
+                }),
+              });
+              if (transRes.ok) {
+                const { translatedContent } = await transRes.json();
+                if (translatedContent.breakpoints?.[0]) {
+                  newBp = translatedContent.breakpoints[0];
+                }
+              }
+            }
+
+            if (newBp) {
+              const updatedBreakpoints = [...session.translatedContent.breakpoints];
+              updatedBreakpoints[index] = newBp;
+              const updatedSession = updateSession(session.id, {
+                translatedContent: { ...session.translatedContent, breakpoints: updatedBreakpoints }
+              });
+              if (updatedSession) {
+                setSession(updatedSession);
+                bpReady = newBp;
+              }
+            }
+          }
+        } catch (error) {
+          console.error("JIT Generation failed:", error);
+        } finally {
+          setIsGeneratingJIT(false);
+        }
+
+        if (bpReady.questions.length === 0) {
+          console.warn("JIT Generation failed to produce questions, skipping breakpoint.");
+          setActiveBreakpointIndex(null);
+          setQuizVisible(false);
+          videoPlayerRef.current?.play();
+          return;
+        }
+      }
+
       setActiveBreakpointIndex(index);
       setIsRetry(false);
       setQuizVisible(true);
 
-      // Companion reacts: breakpointReached dialogue or generic
       const dialogue = session.translatedContent.companionDialogue;
       const isJolly = session.mode === "jolly";
       if (isJolly) {
@@ -430,7 +317,7 @@ export default function LearnSessionPage() {
         );
       }
     },
-    [session, triggerCompanionState]
+    [session, sessionDifficulty, t, triggerCompanionState]
   );
 
   // ── Background final quiz generation ─────────────────────────────────────
@@ -513,7 +400,6 @@ export default function LearnSessionPage() {
     if (!session) return [];
 
     const schedule = buildSmartPauseSchedule(
-      0,
       session.metadata.duration,
       session.quizDifficulty,
       session.translatedContent.breakpoints.length
@@ -1325,6 +1211,17 @@ export default function LearnSessionPage() {
           )}
         </main>
       </div>
+
+        {/* ── Central Overlays (Final Quiz, Generating JIT) ──────────────── */}
+        {isGeneratingJIT && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm px-4">
+            <div className="bg-surface/90 border border-border p-6 rounded-2xl shadow-xl flex flex-col items-center gap-4 text-center max-w-sm">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <h3 className="text-foreground font-semibold">Generating Question...</h3>
+              <p className="text-muted text-sm">Analyzing the last few minutes of the transcript for a deep question.</p>
+            </div>
+          </div>
+        )}
 
       {/* ── Quiz popup (portal) ───────────────────────────────────────────── */}
       {quizVisible && activeBreakpoint && (

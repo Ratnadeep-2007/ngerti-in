@@ -17,6 +17,12 @@ const STOPWORDS = new Set([
   "were", "been", "being", "also", "just", "like", "over", "into", "than", "for",
   "your", "you", "are", "was", "has", "had", "can", "could", "would", "should",
   "does", "did", "doing", "done", "main", "difference", "between", "python",
+  "going", "know", "want", "think", "make", "good", "time", "much", "very", "really",
+  "things", "thing", "because", "we're", "you're", "they're", "it's", "that's", "i'm",
+  "get", "got", "take", "give", "look", "see", "say", "said", "way", "well", "now",
+  "right", "people", "use", "using", "used", "need", "like", "let", "let's", "come",
+  "some", "how", "why", "who", "whom", "whose", "here", "out", "our", "ours", "put",
+  "those", "these", "not", "but", "all", "any", "one", "two", "three", "first", "new"
 ]);
 
 function getClient() {
@@ -84,154 +90,7 @@ function extractKeywords(transcript: TranscriptSegment[], limit = 10): string[] 
     .slice(0, limit);
 }
 
-function hasProgrammingSignals(transcript: TranscriptSegment[]): boolean {
-  const text = transcript.map((segment) => segment.text).join(" ").toLowerCase();
-  return /(\bcode\b|\bcoding\b|\bprogram\b|\bprogramming\b|\bsyntax\b|\bfunction\b|\bclass\b|\bconst\b|\blet\b|\bvar\b|\breturn\b|\bloop\b|\barray\b|\bobject\b|\bstring\b|\bnumber\b|\bboolean\b|\bvariable\b|\bmethod\b|\bmodule\b|\bimport\b|\bexport\b|\basync\b|\bawait\b|\bapi\b|\balgorithm\b|\bpython\b|\bjavascript\b|\btypescript\b|\breact\b|\bnext\.js\b|\bnode\b|\bexpress\b|\bhtml\b|\bcss\b|\bsql\b|\bquery\b|\bprint\b|\bconsole\.log\b|\bterminal\b|\bcompiler\b|\bruntime\b)/i.test(text);
-}
 
-function inferProgrammingLanguage(transcript: TranscriptSegment[]): string {
-  const text = transcript.map((segment) => segment.text).join(" ").toLowerCase();
-  if (/\bpython\b/.test(text)) return "python";
-  if (/\bjavascript\b|\bjs\b|\bnode\b/.test(text)) return "javascript";
-  if (/\btypescript\b|\bts\b/.test(text)) return "typescript";
-  if (/\bc\+\+\b|\bcpp\b/.test(text)) return "cpp";
-  if (/\bc language\b|\b c \b|\bc\b/.test(text)) return "c";
-  if (/\bhtml\b/.test(text)) return "html";
-  if (/\bcss\b/.test(text)) return "css";
-  if (/\bsql\b|\bquery\b/.test(text)) return "sql";
-  if (/\bjava\b/.test(text)) return "java";
-  if (/\brust\b/.test(text)) return "rust";
-  if (/\bgo\b|\bgolang\b/.test(text)) return "go";
-  return "javascript";
-}
-
-function buildFallbackQuestionSet(
-  transcript: TranscriptSegment[],
-  timestamp: number,
-  questionCount: number,
-  difficulty: QuizDifficulty
-): QuizQuestion[] {
-  const keywords = extractKeywords(transcript, 8);
-  const topic = keywords[0] ?? "the lesson";
-  const secondTopic = keywords[1] ?? topic;
-  const thirdTopic = keywords[2] ?? secondTopic;
-  const isProgrammingLesson = hasProgrammingSignals(transcript);
-  const programmingLanguage = inferProgrammingLanguage(transcript);
-  const baseCount = Math.max(1, Math.floor(questionCount));
-  const questions: QuizQuestion[] = [];
-
-  questions.push({
-    type: "mcq",
-    question:
-      difficulty === "hard"
-        ? `Which idea is most directly supported by the transcript so far?`
-        : `Which topic has been covered by ${formatTime(timestamp)}?`,
-    explanation: `This question is grounded only in the transcript up to ${formatTime(timestamp)}.`,
-    options: [
-      topic,
-      secondTopic === topic ? `${topic} basics` : secondTopic,
-      thirdTopic === topic ? `${topic} details` : thirdTopic,
-      "None of the above",
-    ],
-    correct: 0,
-  });
-
-  if (baseCount >= 2) {
-    if (isProgrammingLesson) {
-      questions.push({
-        type: "code",
-        question:
-          difficulty === "hard"
-            ? `Write a short ${programmingLanguage} example that demonstrates ${topic}.`
-            : `Write a small ${programmingLanguage} example using ${topic}.`,
-        explanation: "This scaffold is only used when the transcript clearly includes coding content.",
-        language: programmingLanguage,
-        initialCode: `// Write a minimal ${programmingLanguage} example here\n`,
-        expectedOutput: undefined,
-        solution: undefined,
-      });
-    } else {
-      questions.push({
-        type: "text",
-        question:
-          difficulty === "hard"
-            ? `How would you apply the idea of ${topic} to a new example?`
-            : `Explain the lesson's current idea about ${topic} in your own words.`,
-        explanation: "Short answer practice keeps the prompt tied to the visible transcript window.",
-        expectedAnswer: topic,
-        acceptedKeywords: keywords.slice(0, Math.min(4, keywords.length)),
-        placeholder: "Type 1-2 sentences",
-      });
-    }
-  }
-
-  if (baseCount >= 3) {
-    questions.push({
-      type: "text",
-      question:
-        difficulty === "hard"
-          ? `What would change if the lesson's main rule about ${topic} were reversed?`
-          : `Why is ${topic} important in this lesson?`,
-      explanation: "This fallback keeps the prompt grounded in the visible transcript.",
-      expectedAnswer: topic,
-      acceptedKeywords: [secondTopic, topic].filter((value, index, array) => array.indexOf(value) === index),
-      placeholder: "Write a short answer",
-    });
-  }
-
-  while (questions.length < baseCount) {
-    questions.push({
-      type: "text",
-      question: `What is one important idea the lesson has introduced about ${secondTopic}?`,
-      explanation: "The fallback keeps later questions grounded in the visible transcript.",
-      expectedAnswer: secondTopic,
-      acceptedKeywords: [secondTopic, topic].filter((value, index, array) => array.indexOf(value) === index),
-      placeholder: "Write a short answer",
-    });
-  }
-
-  return questions.slice(0, baseCount);
-}
-
-function buildProgrammingCodeQuestion(
-  transcript: TranscriptSegment[],
-  timestamp: number,
-  difficulty: QuizDifficulty
-): CodeQuestion {
-  const keywords = extractKeywords(transcript, 8);
-  const topic = keywords[0] ?? "the concept";
-  const language = inferProgrammingLanguage(transcript);
-
-  return {
-    type: "code",
-    question:
-      difficulty === "hard"
-        ? `Write a small ${language} example that demonstrates ${topic} without using future concepts.`
-        : `Write a short ${language} example based on what the transcript has taught so far.`,
-    explanation: `This code prompt is grounded only in the transcript up to ${formatTime(timestamp)}.`,
-    language,
-    initialCode:
-      language === "python"
-        ? `# Write a minimal Python example here\n`
-        : language === "javascript"
-        ? `// Write a minimal JavaScript example here\n`
-        : language === "typescript"
-        ? `// Write a minimal TypeScript example here\n`
-        : language === "cpp"
-        ? `// Write a minimal C++ example here\n`
-        : language === "c"
-        ? `/* Write a minimal C example here */\n`
-        : language === "java"
-        ? `// Write a minimal Java example here\n`
-        : language === "html"
-        ? `<!-- Write a minimal HTML example here -->\n`
-        : language === "css"
-        ? `/* Write a minimal CSS example here */\n`
-        : `// Write a minimal ${language} example here\n`,
-    expectedOutput: undefined,
-    solution: undefined,
-  };
-}
 
 function hasDuplicateOrGenericOptions(options: string[]): boolean {
   const normalized = options.map((option) => normalizeWhitespace(option).toLowerCase());
@@ -354,91 +213,51 @@ function normalizeQuestion(raw: unknown): QuizQuestion | null {
 
 function normalizeBreakpoint(
   raw: unknown,
-  fallbackTimestamp: number,
+  timestamp: number,
   transcriptWindow: TranscriptSegment[],
   questionCount: number,
   difficulty: QuizDifficulty
-): Breakpoint | null {
+): Breakpoint {
   if (!isRecord(raw)) {
-    const fallbackQuestions = buildFallbackQuestionSet(
-      transcriptWindow,
-      fallbackTimestamp,
-      questionCount,
-      difficulty
-    );
     return {
-      timestamp: fallbackTimestamp,
-      topic: "Learning checkpoint",
-      questions: fallbackQuestions,
-      primaryQuestions: fallbackQuestions.filter((q): q is MCQQuestion => q.type === "mcq"),
-      retryQuestions: fallbackQuestions.filter((q): q is MCQQuestion => q.type === "mcq"),
-      checkpointMode: "sandbox",
+      timestamp,
+      topic: "Upcoming Checkpoint",
+      questions: [],
+      primaryQuestions: [],
+      retryQuestions: [],
     };
   }
-  const timestamp = typeof raw.timestamp === "number" ? raw.timestamp : fallbackTimestamp;
-  const topic = typeof raw.topic === "string" && raw.topic.trim() ? raw.topic.trim() : "Learning checkpoint";
-  const checkpointMode =
-    raw.checkpointMode === "reverse" || raw.checkpointMode === "sandbox"
-      ? raw.checkpointMode
-      : undefined;
 
-  const mixedQuestionsSource =
-    Array.isArray(raw.questions) && raw.questions.length > 0
-      ? raw.questions
-      : [...(Array.isArray(raw.primaryQuestions) ? raw.primaryQuestions : []), ...(Array.isArray(raw.retryQuestions) ? raw.retryQuestions : [])];
+  const topic = typeof raw.topic === "string" && raw.topic.trim() ? raw.topic.trim() : "Learning Checkpoint";
+  const checkpointMode = raw.checkpointMode === "reverse" || raw.checkpointMode === "sandbox" ? raw.checkpointMode : undefined;
 
-  const questions = mixedQuestionsSource
+  const rawQuestions = Array.isArray(raw.questions) ? raw.questions : [];
+  
+  const questions = rawQuestions
     .map(normalizeQuestion)
     .filter((q): q is QuizQuestion => Boolean(q))
     .filter((q) => questionLooksValid(q, transcriptWindow));
 
-  const fallbackQuestions = buildFallbackQuestionSet(
-    transcriptWindow,
-    timestamp,
-    questionCount,
-    difficulty
-  );
-  const baseQuestions = questions.length > 0 ? questions : fallbackQuestions;
-  const programmingLesson = hasProgrammingSignals(transcriptWindow);
-  let mergedQuestions = baseQuestions.slice(0, Math.max(1, questionCount));
-
-  if (programmingLesson && !mergedQuestions.some((question) => question.type === "code")) {
-    const codeQuestion = buildProgrammingCodeQuestion(transcriptWindow, timestamp, difficulty);
-    if (mergedQuestions.length >= Math.max(1, questionCount)) {
-      mergedQuestions = [
-        mergedQuestions[0],
-        codeQuestion,
-        ...mergedQuestions.slice(2),
-      ].slice(0, Math.max(1, questionCount));
-    } else {
-      mergedQuestions = [...mergedQuestions, codeQuestion].slice(0, Math.max(1, questionCount));
-    }
-  }
-
-  if (programmingLesson && !mergedQuestions.some((question) => question.type === "code")) {
-    mergedQuestions = [buildProgrammingCodeQuestion(transcriptWindow, timestamp, difficulty), ...mergedQuestions]
-      .slice(0, Math.max(1, questionCount));
-  }
-
-  const primaryQuestions = mergedQuestions.filter((q): q is MCQQuestion => q.type === "mcq");
-  const retryQuestions = primaryQuestions.length > 0 ? [...primaryQuestions] : [];
+  const mergedQuestions = questions.slice(0, Math.max(1, questionCount));
+  const mcqQuestions = mergedQuestions.filter((q): q is MCQQuestion => q.type === "mcq");
 
   return {
     timestamp,
     topic,
     questions: mergedQuestions,
-    primaryQuestions,
-    retryQuestions,
+    primaryQuestions: mcqQuestions,
+    retryQuestions: mcqQuestions,
     checkpointMode,
   };
 }
 
-function buildSystemPrompt(timestamp: number, questionCount: number, difficulty: QuizDifficulty): string {
+function buildSystemPrompt(timestamp: number, questionCount: number, difficulty: QuizDifficulty, videoTitle: string): string {
   return `You are an expert educational evaluator for LingoLearn.
 
 You will receive a transcript window that ONLY includes content from 00:00 up to ${formatTime(timestamp)}.
 Do not use concepts, terminology, examples, or answers that are introduced after that point.
 
+Video Title: ${videoTitle}
 Difficulty: ${difficulty}
 
 Task:
@@ -452,7 +271,8 @@ Task:
 - Always include at least one 'mcq' question.
 - Prefer a second 'text' question when the lesson is conceptual or explanatory.
 - If the video contains ANY programming terms, algorithms, or code examples, you MUST include at least one 'code' question.
-- When you use a code question, match the language to the language clearly mentioned or implied by the transcript.
+- When you use a code question, infer the precise programming language (e.g. 'python', 'c', 'cpp', 'javascript', 'go', 'java') based on the Video Title and transcript. Output this exactly in the 'language' field.
+- Provide a starting snippet in the 'initialCode' field appropriate for the language (e.g., '// Write code here').
 - Keep the questions grounded in the transcript window and avoid future knowledge.
 - Do not invent options that are empty, vague, duplicated, or unrelated.
 - Keep the questions concise, learner-friendly, and clearly phrased.
@@ -508,7 +328,8 @@ async function callGroq(
   transcriptWindow: TranscriptSegment[],
   timestamp: number,
   questionCount: number,
-  difficulty: QuizDifficulty
+  difficulty: QuizDifficulty,
+  videoTitle: string
 ): Promise<Breakpoint | null> {
   const chunkText = transcriptWindow
     .map((segment) => `[${formatTime(segment.start)}] ${segment.text}`)
@@ -517,11 +338,11 @@ async function callGroq(
   const response = await client.chat.completions.create({
     model: GROQ_QUIZ_MODEL,
     messages: [
-      { role: "system", content: buildSystemPrompt(timestamp, questionCount, difficulty) },
+      { role: "system", content: buildSystemPrompt(timestamp, questionCount, difficulty, videoTitle) },
       { role: "user", content: `Transcript window:\n${chunkText}` },
     ],
     temperature: 0.6,
-    max_tokens: 4096,
+    max_tokens: 1024,
     response_format: { type: "json_object" },
   });
 
@@ -542,19 +363,25 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function generateBreakpointWithRetry(
-  client: Groq,
+export async function generateSingleBreakpoint(
   transcript: TranscriptSegment[],
-  timestamp: number,
-  questionCount: number,
-  difficulty: QuizDifficulty
+  startSec: number,
+  endSec: number,
+  questionsPerBreakpoint: number,
+  difficulty: QuizDifficulty = "medium",
+  videoTitle: string
 ): Promise<Breakpoint | null> {
-  const windowTranscript = sliceTranscriptThrough(transcript, timestamp);
+  const client = getClient();
+  
+  // Dramatically reduce latency by only sending the last 3 minutes of transcript
+  const effectiveStart = Math.max(startSec, endSec - 180);
+  const windowTranscript = transcript.filter(s => s.start >= effectiveStart && s.start <= endSec);
+  
   if (windowTranscript.length === 0) return null;
 
   for (let attempt = 0; attempt <= 3; attempt++) {
     try {
-      return await callGroq(client, windowTranscript, timestamp, questionCount, difficulty);
+      return await callGroq(client, windowTranscript, endSec, questionsPerBreakpoint, difficulty, videoTitle);
     } catch (err) {
       if (is429(err) && attempt < 3) {
         const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 500;
@@ -563,7 +390,7 @@ async function generateBreakpointWithRetry(
         continue;
       }
       if (!is429(err)) {
-        console.error("Non-rate-limit error in breakpoint generation, skipping:", err);
+        console.error("Non-rate-limit error in breakpoint generation:", err);
         return null;
       }
       throw err;
@@ -571,55 +398,4 @@ async function generateBreakpointWithRetry(
   }
 
   return null;
-}
-
-export async function generateQuizzes(
-  transcript: TranscriptSegment[],
-  maxBreakpoints: number,
-  questionsPerBreakpoint: number,
-  difficulty: QuizDifficulty = "medium"
-): Promise<Breakpoint[]> {
-  const duration = getTranscriptDuration(transcript);
-  return generateQuizzesForRange(transcript, 0, duration, maxBreakpoints, questionsPerBreakpoint, difficulty);
-}
-
-export async function generateQuizzesForRange(
-  transcript: TranscriptSegment[],
-  startSec: number,
-  endSec: number,
-  maxBreakpoints: number,
-  questionsPerBreakpoint: number,
-  difficulty: QuizDifficulty = "medium",
-  aiWindowEndSec: number = Infinity
-): Promise<Breakpoint[]> {
-  const client = getClient();
-  const schedule = buildSmartPauseSchedule(startSec, endSec, difficulty, maxBreakpoints);
-
-  const results: Breakpoint[] = [];
-  const chunkSize = 5;
-  for (let i = 0; i < schedule.length; i += chunkSize) {
-    const chunk = schedule.slice(i, i + chunkSize);
-    const chunkResults = await Promise.all(
-      chunk.map(({ timestamp, checkpointMode }) => {
-        if (timestamp > aiWindowEndSec) {
-          const bp = normalizeBreakpoint(null, timestamp, sliceTranscriptThrough(transcript, timestamp), questionsPerBreakpoint, difficulty);
-          return Promise.resolve(bp ? { ...bp, checkpointMode } : null);
-        }
-        return generateBreakpointWithRetry(
-          client,
-          transcript,
-          timestamp,
-          questionsPerBreakpoint,
-          difficulty
-        ).then((breakpoint) =>
-          breakpoint ? { ...breakpoint, checkpointMode } : null
-        );
-      })
-    );
-    for (const res of chunkResults) {
-      if (res) results.push(res);
-    }
-  }
-
-  return results.sort((a, b) => a.timestamp - b.timestamp);
 }
