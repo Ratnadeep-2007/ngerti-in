@@ -7,9 +7,9 @@ import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
 
 export const metadata: Metadata = {
-  title: "LingoLearn — Learn Any Video in Any Language",
+  title: "Lumina.ai — Active Validation Sandbox",
   description:
-    "Transform any YouTube video into an interactive, quiz-driven learning experience in 130+ languages powered by Lingo.dev",
+    "Transform any YouTube video into an active validation sandbox with contextual checkpoints, code tasks, and verified learning outputs.",
 };
 
 export default function RootLayout({

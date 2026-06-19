@@ -117,7 +117,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
   onEnd,
 }, ref) {
   const { t } = useTranslation();
-  const playerRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<any>(null);
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -166,65 +166,78 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
     setReady(true);
   }, []);
 
-  // Use native event listeners for custom element compatibility (react-player v3 + youtube-video-element)
+  // ReactPlayer progress events are the most reliable way to detect time changes
+  // across the YouTube-backed player surface.
   const breakpointsRef = useRef(breakpoints);
   const breakpointsClearedRef = useRef(breakpointsCleared);
   const onBreakpointReachedRef = useRef(onBreakpointReached);
   const onProgressUpdateRef = useRef(onProgressUpdate);
-  breakpointsRef.current = breakpoints;
-  breakpointsClearedRef.current = breakpointsCleared;
-  onBreakpointReachedRef.current = onBreakpointReached;
-  onProgressUpdateRef.current = onProgressUpdate;
 
   useEffect(() => {
-    const el = playerRef.current;
-    if (!el) return;
+    breakpointsRef.current = breakpoints;
+    breakpointsClearedRef.current = breakpointsCleared;
+    onBreakpointReachedRef.current = onBreakpointReached;
+    onProgressUpdateRef.current = onProgressUpdate;
+  });
 
-    const handleTimeUpdate = () => {
-      const t = typeof el.currentTime === "number" && isFinite(el.currentTime) ? el.currentTime : 0;
-      setCurrentTime(t);
-      onProgressUpdateRef.current(t);
+  const checkForBreakpoint = useCallback((seconds: number) => {
+    const t = Number.isFinite(seconds) ? seconds : 0;
+    setCurrentTime(t);
+    onProgressUpdateRef.current(t);
 
-      const bps = breakpointsRef.current;
-      const cleared = breakpointsClearedRef.current;
-      for (let i = 0; i < bps.length; i++) {
-        if (firedBreakpoints.current.has(i)) {
-          if (!cleared[i] && t < bps[i].timestamp - 1) {
-            firedBreakpoints.current.delete(i);
-          }
-          continue;
+    const bps = breakpointsRef.current;
+    const cleared = breakpointsClearedRef.current;
+    for (let i = 0; i < bps.length; i++) {
+      if (firedBreakpoints.current.has(i)) {
+        if (!cleared[i] && t < bps[i].timestamp - 1) {
+          firedBreakpoints.current.delete(i);
         }
-        if (t >= bps[i].timestamp) {
-          firedBreakpoints.current.add(i);
-          setPlaying(false);
-          onBreakpointReachedRef.current(i);
-          break;
-        }
+        continue;
       }
-    };
+      if (t >= bps[i].timestamp) {
+        firedBreakpoints.current.add(i);
+        const player = playerRef.current;
+        if (player && typeof player.pause === "function") {
+          player.pause();
+        }
+        setPlaying(false);
+        onBreakpointReachedRef.current(i);
+        break;
+      }
+    }
+  }, []);
 
-    const handleDur = () => {
-      const d = el.duration;
-      setDuration(typeof d === "number" && isFinite(d) ? d : 0);
-    };
+  useEffect(() => {
+    if (!ready || !playing) return;
 
-    el.addEventListener("timeupdate", handleTimeUpdate);
-    el.addEventListener("durationchange", handleDur);
-    // Also check duration immediately in case it's already loaded
-    if (el.duration && isFinite(el.duration)) setDuration(el.duration);
+    const interval = window.setInterval(() => {
+      const player = playerRef.current;
+      if (!player) return;
 
-    return () => {
-      el.removeEventListener("timeupdate", handleTimeUpdate);
-      el.removeEventListener("durationchange", handleDur);
-    };
-  }, [ready]); // Re-attach when player becomes ready
+      const currentSeconds =
+        typeof player.currentTime === "number" && Number.isFinite(player.currentTime)
+          ? player.currentTime
+          : typeof player.getCurrentTime === "function"
+            ? player.getCurrentTime()
+            : currentTime;
+
+      checkForBreakpoint(currentSeconds);
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [ready, playing, checkForBreakpoint, currentTime]);
 
   const handleSeek = useCallback((seconds: number) => {
-    if (playerRef.current) {
-      playerRef.current.currentTime = seconds;
+    const player = playerRef.current;
+    if (player) {
+      if (typeof player.seekTo === "function") {
+        player.seekTo(seconds, "seconds");
+      } else if (typeof player.currentTime === "number") {
+        player.currentTime = seconds;
+      }
     }
-    setCurrentTime(seconds);
-  }, []);
+    checkForBreakpoint(seconds);
+  }, [checkForBreakpoint]);
 
   useImperativeHandle(ref, () => ({
     seekTo: (s: number) => {
@@ -301,10 +314,12 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
           volume={effectiveVolume}
           playbackRate={playbackRate}
           onReady={onPlayerReady}
+          onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+          onTimeUpdate={(event) => checkForBreakpoint(event.currentTarget.currentTime)}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => { setPlaying(false); onEnd?.(); }}
-          /* timeupdate and durationchange handled via native listeners in useEffect */
+          /* Playback time events are used to trigger checkpoint pauses reliably. */
           config={{
             youtube: {
               cc_load_policy: 0,
@@ -484,7 +499,7 @@ export default VideoPlayer;
 function PlayPulse({ playing }: { playing: boolean }) {
   const [visible, setVisible] = useState(false);
   const [wasPlaying, setWasPlaying] = useState(false);
-  const timerRef = useRef<any>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (playing !== wasPlaying) {

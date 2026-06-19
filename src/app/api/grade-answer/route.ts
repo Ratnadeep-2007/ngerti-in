@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 import type { TextQuestion } from "@/lib/types";
 
-const GEMINI_GRADE_MODEL = process.env.GEMINI_GRADE_MODEL ?? "gemini-2.5-flash";
+const GROQ_GRADE_MODEL = process.env.GROQ_GRADE_MODEL ?? "llama-3.1-70b-versatile";
 
 function getClient() {
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  return new Groq({ apiKey: process.env.GROQ_API_KEY! });
 }
 
 function isOpenEndedQuestion(
@@ -67,12 +67,12 @@ function localSemanticFallback(
   };
 }
 
-async function gradeWithGemini(
+async function gradeWithGroq(
   question: TextQuestion,
   answer: string
 ): Promise<{ correct: boolean; reason: string } | null> {
   const client = getClient();
-  const prompt = `System: You are a strict but fair semantic grader for an educational platform.
+  const prompt = `You are a strict but fair semantic grader for an educational platform.
 Return ONLY valid JSON with:
 {
   "correct": boolean,
@@ -85,6 +85,7 @@ Rules:
 - Mark correct if the answer demonstrates the same concept, even if phrased differently.
 - Mark incorrect if it is unrelated, contradicts the lesson, or is too vague.
 - Mark incorrect if the user intentionally gives a wrong or nonsense answer.
+- Explain your reasoning briefly.
 
 Question Context:
 ${JSON.stringify({
@@ -99,17 +100,18 @@ Learner answer:
 ${answer}`;
 
   try {
-    const response = await client.models.generateContent({
-      model: GEMINI_GRADE_MODEL,
-      contents: prompt,
-      config: {
-        temperature: 0,
-        maxOutputTokens: 256,
-        responseMimeType: "application/json",
-      },
+    const response = await client.chat.completions.create({
+      model: GROQ_GRADE_MODEL,
+      messages: [
+        { role: "system", content: "You are an automated grading assistant." },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0,
+      max_tokens: 256,
+      response_format: { type: "json_object" },
     });
 
-    const content = response.text;
+    const content = response.choices[0]?.message?.content;
     if (!content) return null;
 
     const parsed = JSON.parse(content) as { correct?: unknown; reason?: unknown };
@@ -123,7 +125,7 @@ ${answer}`;
         : "Answer rejected.",
     };
   } catch (error) {
-    console.error("Gemini grading failed:", error);
+    console.error("Groq grading failed:", error);
     return null;
   }
 }
@@ -144,16 +146,16 @@ export async function POST(request: NextRequest) {
 
     const answer = body.answer.trim();
     const localResult = localSemanticFallback(body.question, answer);
-    const geminiResult = await gradeWithGemini(body.question, answer);
+    const groqResult = await gradeWithGroq(body.question, answer);
     const result =
-      geminiResult === null
+      groqResult === null
         ? localResult
-        : geminiResult.correct || localResult.correct
+        : groqResult.correct || localResult.correct
         ? {
             correct: true,
-            reason: localResult.correct ? localResult.reason : geminiResult.reason,
+            reason: localResult.correct ? localResult.reason : groqResult.reason,
           }
-        : geminiResult;
+        : groqResult;
 
     return NextResponse.json(result);
   } catch (error) {

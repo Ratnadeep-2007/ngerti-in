@@ -100,40 +100,31 @@ export default function ProgressBar({
         onKeyDown={handleKeyDown}
       >
         {/* Rail */}
-        <div className="relative w-full h-1.5 rounded-full bg-border overflow-visible">
+        <div className="relative w-full h-1.5 rounded-full bg-border overflow-hidden">
           {/* Filled portion */}
           <div
-            className="absolute left-0 top-0 h-full rounded-full bg-primary"
+            className="absolute left-0 top-0 h-full bg-primary"
             style={{ width: `${progress}%` }}
           />
 
-          {/* Playhead thumb — appears on hover/focus */}
-          <div
-            className="
-              absolute top-1/2 -translate-y-1/2 -translate-x-1/2
-              w-3.5 h-3.5 rounded-full bg-primary-light
-              shadow-[0_0_8px_rgba(162,155,254,0.65)]
-              border-2 border-primary
-              opacity-70 group-hover:opacity-100 group-focus:opacity-100
-              transition-opacity duration-150 pointer-events-none
-            "
-            style={{ left: `${progress}%` }}
-          />
-
-          {/* Breakpoint dot markers */}
+          {/* Breakpoint segments */}
           {breakpoints.map((bp, i) => {
-            const pct = (bp.timestamp / safeDuration) * 100;
+            const currentPct = (bp.timestamp / safeDuration) * 100;
+            const prevPct = i === 0 ? 0 : (breakpoints[i - 1].timestamp / safeDuration) * 100;
+            const widthPct = currentPct - prevPct;
             const { fill, stroke } = getMarkerStyle(i);
             const isFirstUncleared = breakpointsCleared.findIndex((c) => !c) === i;
             
             return (
               <div
                 key={i}
-                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 h-1.5 w-1.5 rounded-full transition-all duration-300"
+                className="absolute top-0 h-full border-r-2 border-background/50 transition-all duration-300"
                 style={{ 
-                  left: `${pct}%`,
-                  backgroundColor: fill === "transparent" ? stroke : fill,
-                  boxShadow: isFirstUncleared ? `0 0 8px 2px ${fill}` : "none",
+                  left: `${prevPct}%`,
+                  width: `${widthPct}%`,
+                  backgroundColor: fill === "transparent" ? "transparent" : fill,
+                  opacity: fill === "transparent" ? 1 : 0.85,
+                  boxShadow: isFirstUncleared ? `inset 0 0 8px 2px ${fill}` : "none",
                   cursor: "pointer"
                 }}
                 title={bp.topic}
@@ -145,6 +136,19 @@ export default function ProgressBar({
             );
           })}
         </div>
+
+        {/* Playhead thumb — appears on hover/focus outside the overflow-hidden rail */}
+        <div
+          className="
+            absolute top-1/2 -translate-y-1/2 -translate-x-1/2
+            w-3.5 h-3.5 rounded-full bg-primary-light
+            shadow-[0_0_8px_rgba(162,155,254,0.65)]
+            border-2 border-primary
+            opacity-0 group-hover:opacity-100 group-focus:opacity-100
+            transition-opacity duration-150 pointer-events-none z-20
+          "
+          style={{ left: `${progress}%` }}
+        />
       </div>
 
       {/* Time stamps + checkpoint counter */}

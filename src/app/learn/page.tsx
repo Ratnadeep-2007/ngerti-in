@@ -140,20 +140,17 @@ function HomePageInner() {
       const duration = extractData.metadata.duration;
       const quizPlan = getQuizPlan(duration, quizDifficulty);
       const initialEnd = quizPlan.initialWindowSeconds;
-      const initialMaxBp = Math.max(
-        1,
-        Math.ceil(quizPlan.maxBreakpoints * (initialEnd / duration))
-      );
 
       const quizzesRes = await fetch("/api/generate-quizzes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcript: extractData.transcript,
-          maxBreakpoints: initialMaxBp,
+          maxBreakpoints: quizPlan.maxBreakpoints,
           questionsPerBreakpoint: quizPlan.questionsPerBreakpoint,
           startTime: 0,
-          endTime: initialEnd,
+          endTime: duration,
+          aiWindowEndSec: initialEnd,
           difficulty: quizDifficulty,
         }),
       });
@@ -240,7 +237,7 @@ function HomePageInner() {
                   color: "var(--foreground)",
                 }}
               >
-                {t("common.appName", { defaultValue: "LingoDev" })}
+                {t("common.appName", { defaultValue: "Lumina.ai" })}
               </span>
             </h1>
 
@@ -614,7 +611,7 @@ function HomePageInner() {
           <div className="mt-10 flex flex-wrap justify-center gap-3 animate-fade-in">
             {[
               { icon: "🌍", text: t("home.feature130") },
-              { icon: "⚡", text: t("home.pillGroqAI", { defaultValue: "Gemini AI" }) },
+              { icon: "⚡", text: t("home.pillGroqAI", { defaultValue: "Groq AI" }) },
               { icon: "🎓", text: t("home.pillCertificate") },
               { icon: "📊", text: t("home.pillProgress") },
             ].map((f) => (

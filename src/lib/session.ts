@@ -17,6 +17,43 @@ function generateId(): string {
   return `ld_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function saveSessionsToLocalStorage(sessions: Session[]): void {
+  if (typeof window === "undefined") return;
+
+  let currentSessions = [...sessions];
+
+  // Hard limit: Keep at most the 10 most recent sessions to avoid huge JSON strings
+  if (currentSessions.length > 10) {
+    currentSessions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    currentSessions = currentSessions.slice(0, 10);
+  }
+
+  let attempts = 0;
+  while (attempts < 10) {
+    try {
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(currentSessions));
+      return; // Success
+    } catch (e: unknown) {
+      const err = e as Error & { code?: number };
+      const isQuotaError =
+        err.name === "QuotaExceededError" ||
+        err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+        err.code === 22 ||
+        err.code === 1014;
+
+      if (isQuotaError && currentSessions.length > 1) {
+        // Evict the oldest session
+        currentSessions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        currentSessions.pop(); // Remove oldest
+        attempts++;
+      } else {
+        console.error("Failed to save sessions to localStorage:", e);
+        return;
+      }
+    }
+  }
+}
+
 export function createSession(params: {
   videoUrl: string;
   metadata: VideoMetadata;
@@ -49,13 +86,7 @@ export function createSession(params: {
 
   const sessions = getAllSessions();
   sessions.push(session);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-    } catch (e) {
-      console.error("Failed to save session to localStorage:", e);
-    }
-  }
+  saveSessionsToLocalStorage(sessions);
 
   return session;
 }
@@ -88,13 +119,8 @@ export function updateSession(id: string, updates: Partial<Session>): Session | 
       delete sessionEntry[key as string];
     }
   }
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
-    } catch (e) {
-      console.error("Failed to save session to localStorage:", e);
-    }
-  }
+  
+  saveSessionsToLocalStorage(sessions);
   return sessions[index];
 }
 
@@ -136,14 +162,8 @@ export function deleteSession(id: string): boolean {
   const sessions = getAllSessions();
   const filtered = sessions.filter((s) => s.id !== id);
   if (filtered.length === sessions.length) return false;
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(filtered));
-    } catch (e) {
-      console.error("Failed to delete session from localStorage:", e);
-      return false; // Indicate failure to save
-    }
-  }
+  
+  saveSessionsToLocalStorage(filtered);
   return true;
 }
 

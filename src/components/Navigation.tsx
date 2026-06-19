@@ -25,7 +25,7 @@ export default function Navigation() {
       <div className="flex justify-between items-center w-full sm:col-span-1">
         <Link href="/" onClick={() => setIsMenuOpen(false)}>
           <span className="text-2xl font-extrabold pixel-text-strong tracking-widest text-[var(--primary-text)] whitespace-nowrap">
-            LINGOLEARN
+            LUMINA.AI
           </span>
         </Link>
         <button

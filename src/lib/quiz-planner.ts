@@ -11,19 +11,19 @@ const DIFFICULTY_PLANS: Record<QuizDifficulty, DifficultyPlan> = {
   easy: {
     intervalMinutes: 10,
     questionsPerBreakpoint: 1,
-    initialWindowMinutes: 1200,
+    initialWindowMinutes: 60,
     prefetchWindowMinutes: 20,
   },
   medium: {
     intervalMinutes: 5,
     questionsPerBreakpoint: 2,
-    initialWindowMinutes: 1200,
+    initialWindowMinutes: 45,
     prefetchWindowMinutes: 15,
   },
   hard: {
     intervalMinutes: 3,
     questionsPerBreakpoint: 3,
-    initialWindowMinutes: 1200,
+    initialWindowMinutes: 30,
     prefetchWindowMinutes: 10,
   },
 };

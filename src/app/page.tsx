@@ -11,7 +11,7 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="text-center space-y-8 pt-12 animate-slide-up">
         <h1 className="text-6xl font-extrabold tracking-tight sm:text-8xl pixel-text-strong">
-          LingoLearn
+          Lumina.ai
         </h1>
         <p className="text-2xl sm:text-3xl font-bold pixel-text" style={{ color: "var(--primary-light)" }}>
           {t("home.tagline")}

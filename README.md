@@ -1,6 +1,6 @@
-# LingoLearn
+# Lumina.ai
 
-> **Turn any YouTube video into an interactive learning experience. In 130+ languages.**
+> **Turn any YouTube video into an active validation sandbox. In 130+ languages.**
 
 Built for the [Lingo.dev Hackathon](https://lingo.dev) | Powered by [Lingo.dev SDK](https://lingo.dev/) & [Groq AI](https://groq.com/)
 
@@ -9,12 +9,12 @@ Built for the [Lingo.dev Hackathon](https://lingo.dev) | Powered by [Lingo.dev S
 ## See It In Action
 
 ### Quick Promo
-Get a quick overview of LingoLearn's key features and value proposition:
+Get a quick overview of Lumina.ai's key features and value proposition:
 
 **[Watch Promo Video](https://youtu.be/A4kRh5K-mSo)**
 
 ### Full Project Demo
-Watch the complete feature walkthrough and learn how LingoLearn transforms passive video watching into active learning:
+Watch the complete feature walkthrough and learn how Lumina.ai transforms passive video watching into active validation:
 
 **[Watch Full Demo Video](https://youtu.be/E97xhtWxmYY)**
 
@@ -30,9 +30,9 @@ YouTube is the world's largest classroom — but it's designed to distract, not 
 
 ## The Solution
 
-**LingoLearn** turns passive YouTube watching into active, **quiz-driven learning**.
+**Lumina.ai** turns passive YouTube watching into active, **checkpoint-driven verification**.
 
-Paste a URL → AI generates quizzes → You learn → You earn certificates
+Paste a URL → AI generates checkpoints → You prove understanding → You earn a verification ledger
 
 **Everything translates instantly into 130+ languages** using the Lingo.dev SDK.
 
@@ -46,12 +46,12 @@ Paste a URL → AI generates quizzes → You learn → You earn certificates
 |---------|-------------|
 | **130+ Languages** | Full experience translation (not just captions) via Lingo.dev SDK, including RTL support |
 | **Any YouTube Video** | Paste any URL and create a learning session instantly |
-| **AI-Powered Quizzes** | Groq AI analyzes transcripts and generates contextual questions at natural breakpoints |
+| **AI-Powered Checkpoints** | Groq analyzes transcripts and generates contextual questions, code tasks, and reverse-teaching prompts at natural breakpoints |
 | **Two Learning Modes** | **Jolly Mode** (colorful, animated) or **Focus Mode** (minimal, distraction-free) |
 | **15 Pixel Companions** | Unique characters (wizards, knights, rogues) that react to your answers |
 | **Interactive Subtitles** | Translated subtitles with adjustable size, opacity, and position |
 | **Auto-Save Sessions** | Resume exactly where you left off |
-| **Certificates** | Downloadable PDF proof of completion |
+| **Verification Ledger** | Downloadable proof of checkpoint performance and submissions |
 | **Progress Dashboard** | Track all ongoing and completed sessions |
 | **Curated Gallery** | 26+ learning paths across Coding, Cooking, Music, Science, Kids, Fitness, Art, and Language Learning |
 

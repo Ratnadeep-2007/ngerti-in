@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 import {
   Breakpoint,
   CodeQuestion,
@@ -8,8 +8,9 @@ import {
   TextQuestion,
   TranscriptSegment,
 } from "./types";
+import { buildSmartPauseSchedule } from "./smart-pauses";
 
-const GEMINI_QUIZ_MODEL = process.env.GEMINI_QUIZ_MODEL ?? "gemini-2.5-flash";
+const GROQ_QUIZ_MODEL = process.env.GROQ_QUIZ_MODEL ?? "llama-3.1-8b-instant";
 const STOPWORDS = new Set([
   "the", "and", "that", "this", "with", "from", "have", "will", "your", "about",
   "into", "what", "when", "where", "which", "their", "there", "then", "them", "they",
@@ -19,7 +20,7 @@ const STOPWORDS = new Set([
 ]);
 
 function getClient() {
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+  return new Groq({ apiKey: process.env.GROQ_API_KEY! });
 }
 
 function formatTime(seconds: number): string {
@@ -30,24 +31,6 @@ function formatTime(seconds: number): string {
 
 function getTranscriptDuration(transcript: TranscriptSegment[]): number {
   return transcript.reduce((max, segment) => Math.max(max, segment.end), 0);
-}
-
-function buildBreakpointSchedule(
-  transcript: TranscriptSegment[],
-  maxBreakpoints: number,
-  startTime = 0,
-  endTime = getTranscriptDuration(transcript)
-): number[] {
-  if (maxBreakpoints <= 0 || endTime <= startTime) return [];
-
-  const usableCount = Math.max(1, Math.min(maxBreakpoints, Math.floor(maxBreakpoints)));
-  const span = endTime - startTime;
-  const spacing = span / (usableCount + 1);
-
-  return Array.from({ length: usableCount }, (_, index) => {
-    const timestamp = startTime + spacing * (index + 1);
-    return Math.min(endTime - 1, Math.max(startTime + 1, Math.round(timestamp)));
-  }).filter((timestamp, index, all) => all.indexOf(timestamp) === index);
 }
 
 function sliceTranscriptThrough(
@@ -389,10 +372,15 @@ function normalizeBreakpoint(
       questions: fallbackQuestions,
       primaryQuestions: fallbackQuestions.filter((q): q is MCQQuestion => q.type === "mcq"),
       retryQuestions: fallbackQuestions.filter((q): q is MCQQuestion => q.type === "mcq"),
+      checkpointMode: "sandbox",
     };
   }
   const timestamp = typeof raw.timestamp === "number" ? raw.timestamp : fallbackTimestamp;
   const topic = typeof raw.topic === "string" && raw.topic.trim() ? raw.topic.trim() : "Learning checkpoint";
+  const checkpointMode =
+    raw.checkpointMode === "reverse" || raw.checkpointMode === "sandbox"
+      ? raw.checkpointMode
+      : undefined;
 
   const mixedQuestionsSource =
     Array.isArray(raw.questions) && raw.questions.length > 0
@@ -441,11 +429,12 @@ function normalizeBreakpoint(
     questions: mergedQuestions,
     primaryQuestions,
     retryQuestions,
+    checkpointMode,
   };
 }
 
 function buildSystemPrompt(timestamp: number, questionCount: number, difficulty: QuizDifficulty): string {
-  return `You are an expert educational content analyzer for LingoLearn.
+  return `You are an expert educational evaluator for LingoLearn.
 
 You will receive a transcript window that ONLY includes content from 00:00 up to ${formatTime(timestamp)}.
 Do not use concepts, terminology, examples, or answers that are introduced after that point.
@@ -455,19 +444,17 @@ Difficulty: ${difficulty}
 Task:
 - Create exactly one breakpoint for this window.
 - Generate exactly ${questionCount} questions in a mixed set.
-- Never ask questions about the YouTuber, the channel, subscribing, the speaker's identity, or anything unrelated to the actual educational subject matter.
-- Focus strictly on the educational syllabus, core concepts, theories, and practical applications taught in the video.
+- CRITICAL RULE: NEVER ask about the video's aims, goals, creator, speaker, channel, subscribers, likes, intro/outro, or "what the video is about". You must ONLY ask about the ACTUAL SUBJECT MATTER (e.g. definitions, code syntax, technical concepts, frameworks, math, theories).
+- If the transcript is just a generic intro (e.g. "Welcome to my channel..."), do NOT ask about it. Ask about the first technical or subject-matter concept mentioned, or infer the primary subject and ask a fundamental question about it.
 - For easy, prioritize straightforward recall and vocabulary checks from the syllabus.
 - For medium, ask comprehension and application questions from the syllabus.
 - For hard, ask inference, comparison, debugging, output prediction, or "what changes if" questions.
-- Always include at least one mcq question.
-- Prefer a second text question when the lesson is conceptual or explanatory.
+- Always include at least one 'mcq' question.
+- Prefer a second 'text' question when the lesson is conceptual or explanatory.
 - If the video contains ANY programming terms, algorithms, or code examples, you MUST include at least one 'code' question.
 - When you use a code question, match the language to the language clearly mentioned or implied by the transcript.
 - Keep the questions grounded in the transcript window and avoid future knowledge.
-- Use exact transcript facts or clearly implied ideas from the window.
 - Do not invent options that are empty, vague, duplicated, or unrelated.
-- Do not ask filler recap questions like "what was the topic"; ask about meaning, cause, effect, comparison, or application.
 - Keep the questions concise, learner-friendly, and clearly phrased.
 - If a code question is not strongly supported by the transcript, choose text instead.
 
@@ -511,13 +498,13 @@ function extractBreakpoint(
     const first = Array.isArray(parsed.breakpoints) ? parsed.breakpoints[0] : null;
     return normalizeBreakpoint(first, timestamp, transcriptWindow, questionCount, difficulty);
   } catch {
-    console.error("Failed to parse Gemini response:", rawContent);
+    console.error("Failed to parse Groq response:", rawContent);
     return normalizeBreakpoint(null, timestamp, transcriptWindow, questionCount, difficulty);
   }
 }
 
-async function callGemini(
-  client: GoogleGenAI,
+async function callGroq(
+  client: Groq,
   transcriptWindow: TranscriptSegment[],
   timestamp: number,
   questionCount: number,
@@ -527,19 +514,18 @@ async function callGemini(
     .map((segment) => `[${formatTime(segment.start)}] ${segment.text}`)
     .join("\n");
 
-  const prompt = `System Instructions:\n${buildSystemPrompt(timestamp, questionCount, difficulty)}\n\nUser Input:\nTranscript window:\n${chunkText}`;
-
-  const response = await client.models.generateContent({
-    model: GEMINI_QUIZ_MODEL,
-    contents: prompt,
-    config: {
-      temperature: 0.6,
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json",
-    },
+  const response = await client.chat.completions.create({
+    model: GROQ_QUIZ_MODEL,
+    messages: [
+      { role: "system", content: buildSystemPrompt(timestamp, questionCount, difficulty) },
+      { role: "user", content: `Transcript window:\n${chunkText}` },
+    ],
+    temperature: 0.6,
+    max_tokens: 4096,
+    response_format: { type: "json_object" },
   });
 
-  const content = response.text;
+  const content = response.choices[0]?.message?.content;
   if (!content) return null;
   return extractBreakpoint(content, timestamp, questionCount, transcriptWindow, difficulty);
 }
@@ -557,7 +543,7 @@ async function delay(ms: number): Promise<void> {
 }
 
 async function generateBreakpointWithRetry(
-  client: GoogleGenAI,
+  client: Groq,
   transcript: TranscriptSegment[],
   timestamp: number,
   questionCount: number,
@@ -568,7 +554,7 @@ async function generateBreakpointWithRetry(
 
   for (let attempt = 0; attempt <= 3; attempt++) {
     try {
-      return await callGemini(client, windowTranscript, timestamp, questionCount, difficulty);
+      return await callGroq(client, windowTranscript, timestamp, questionCount, difficulty);
     } catch (err) {
       if (is429(err) && attempt < 3) {
         const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 500;
@@ -603,25 +589,32 @@ export async function generateQuizzesForRange(
   endSec: number,
   maxBreakpoints: number,
   questionsPerBreakpoint: number,
-  difficulty: QuizDifficulty = "medium"
+  difficulty: QuizDifficulty = "medium",
+  aiWindowEndSec: number = Infinity
 ): Promise<Breakpoint[]> {
   const client = getClient();
-  const schedule = buildBreakpointSchedule(transcript, maxBreakpoints, startSec, endSec);
+  const schedule = buildSmartPauseSchedule(startSec, endSec, difficulty, maxBreakpoints);
 
   const results: Breakpoint[] = [];
   const chunkSize = 5;
   for (let i = 0; i < schedule.length; i += chunkSize) {
     const chunk = schedule.slice(i, i + chunkSize);
     const chunkResults = await Promise.all(
-      chunk.map((timestamp) =>
-        generateBreakpointWithRetry(
+      chunk.map(({ timestamp, checkpointMode }) => {
+        if (timestamp > aiWindowEndSec) {
+          const bp = normalizeBreakpoint(null, timestamp, sliceTranscriptThrough(transcript, timestamp), questionsPerBreakpoint, difficulty);
+          return Promise.resolve(bp ? { ...bp, checkpointMode } : null);
+        }
+        return generateBreakpointWithRetry(
           client,
           transcript,
           timestamp,
           questionsPerBreakpoint,
           difficulty
-        )
-      )
+        ).then((breakpoint) =>
+          breakpoint ? { ...breakpoint, checkpointMode } : null
+        );
+      })
     );
     for (const res of chunkResults) {
       if (res) results.push(res);

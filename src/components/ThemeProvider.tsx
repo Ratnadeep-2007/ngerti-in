@@ -14,6 +14,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
     // Check local storage or system preference on mount
     const savedTheme = localStorage.getItem("lingodev-theme");

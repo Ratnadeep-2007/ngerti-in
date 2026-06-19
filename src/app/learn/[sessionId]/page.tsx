@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -13,6 +13,7 @@ import { getSession, updateProgress, updateSession, saveFinalQuiz, markFinalQuiz
 import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
 import { getQuizPlan } from "@/lib/quiz-planner";
+import { buildSmartPauseSchedule } from "@/lib/smart-pauses";
 import type { Session, TranslatedContent, Breakpoint } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
 
@@ -84,6 +85,26 @@ function breakpointNeedsRepair(breakpoint: Breakpoint): boolean {
     }
 
     return genericQuestionPatterns.some((pattern) => pattern.test(question.question));
+  });
+}
+
+function breakpointsNeedSmartPauseRepair(session: Session): boolean {
+  const transcript = session.rawTranscript ?? session.originalTranscript;
+  if (transcript.length === 0 || session.translatedContent.breakpoints.length === 0) return false;
+
+  const windowEnd = session.quizzesGeneratedUpTo ?? Math.min(
+    session.metadata.duration,
+    getQuizPlan(session.metadata.duration, session.quizDifficulty).initialWindowSeconds
+  );
+  const expected = buildSmartPauseSchedule(0, windowEnd, session.quizDifficulty);
+
+  if (expected.length !== session.translatedContent.breakpoints.length) return true;
+
+  return session.translatedContent.breakpoints.some((breakpoint, index) => {
+    const expectedTimestamp = expected[index]?.timestamp;
+    return typeof expectedTimestamp === "number"
+      ? Math.abs(breakpoint.timestamp - expectedTimestamp) > 1
+      : true;
   });
 }
 
@@ -161,9 +182,11 @@ export default function LearnSessionPage() {
   // Repair any stale sessions that still contain blank quiz options.
   useEffect(() => {
     if (!session || repairInProgress.current) return;
-    if (!session.rawTranscript || session.translatedContent.breakpoints.length === 0) return;
+    if (session.originalTranscript.length === 0 || session.translatedContent.breakpoints.length === 0) return;
 
-    const needsRepair = session.translatedContent.breakpoints.some(breakpointNeedsRepair);
+    const needsRepair =
+      session.translatedContent.breakpoints.some(breakpointNeedsRepair) ||
+      breakpointsNeedSmartPauseRepair(session);
     if (!needsRepair) return;
 
     repairInProgress.current = true;
@@ -175,7 +198,7 @@ export default function LearnSessionPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            transcript: session.rawTranscript,
+            transcript: session.rawTranscript ?? session.originalTranscript,
             maxBreakpoints: breakpointsToRegenerate,
             questionsPerBreakpoint: getQuizPlan(session.metadata.duration, sessionDifficulty).questionsPerBreakpoint,
             startTime: 0,
@@ -193,7 +216,7 @@ export default function LearnSessionPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            transcript: session.rawTranscript,
+            transcript: session.rawTranscript ?? session.originalTranscript,
             breakpoints: quizzesData.breakpoints,
             sourceLocale: session.sourceLocale,
             targetLocale: session.targetLocale,
@@ -331,8 +354,11 @@ export default function LearnSessionPage() {
       if (data.fallback) return;
       const newTranslated = data.translatedContent;
 
-      // 3. Merge sorted breakpoints
-      const mergedBps = [...session.translatedContent.breakpoints, ...newTranslated.breakpoints].sort(
+      // 3. Merge sorted breakpoints (replace old stub breakpoints)
+      const existingBps = session.translatedContent.breakpoints.filter(
+        bp => bp.timestamp <= generatedUpTo || bp.timestamp > nextEnd
+      );
+      const mergedBps = [...existingBps, ...newTranslated.breakpoints].sort(
         (a, b) => a.timestamp - b.timestamp
       );
       const mergedTranslatedContent = {
@@ -340,12 +366,9 @@ export default function LearnSessionPage() {
         breakpoints: mergedBps,
       };
 
-      // 4. Extend progress arrays
-      const extraCount = newTranslated.breakpoints.length;
+      // 4. Progress arrays stay the same size (they were initialized to full size with the stubs)
       const mergedProgress = {
         ...session.progress,
-        breakpointsCleared: [...session.progress.breakpointsCleared, ...new Array(extraCount).fill(false)],
-        attemptsPerBreakpoint: [...session.progress.attemptsPerBreakpoint, ...new Array(extraCount).fill(0)],
       };
 
       // 5. Persist and update state
@@ -486,6 +509,23 @@ export default function LearnSessionPage() {
     }
   }, [session]);
 
+  const pauseBreakpoints = useMemo(() => {
+    if (!session) return [];
+
+    const schedule = buildSmartPauseSchedule(
+      0,
+      session.metadata.duration,
+      session.quizDifficulty,
+      session.translatedContent.breakpoints.length
+    );
+
+    return session.translatedContent.breakpoints.map((breakpoint, index) => ({
+      ...breakpoint,
+      timestamp: schedule[index]?.timestamp ?? breakpoint.timestamp,
+      checkpointMode: schedule[index]?.checkpointMode ?? breakpoint.checkpointMode,
+    }));
+  }, [session]);
+
   // ── Quiz callbacks ────────────────────────────────────────────────────────
 
   const handleQuizPass = useCallback(() => {
@@ -570,10 +610,10 @@ export default function LearnSessionPage() {
       setQuizVisible(false);
       setIsRetry(false);
       if (activeBreakpointIndex !== null) {
-        const bp = session.translatedContent.breakpoints[activeBreakpointIndex];
+        const bp = pauseBreakpoints[activeBreakpointIndex];
         if (bp) {
           const prevBpTimestamp = activeBreakpointIndex > 0 
-            ? session.translatedContent.breakpoints[activeBreakpointIndex - 1].timestamp 
+            ? pauseBreakpoints[activeBreakpointIndex - 1].timestamp 
             : 0;
           const targetSeek = Math.max(prevBpTimestamp, bp.timestamp - 45); // Rewind up to 45 seconds or previous breakpoint
           triggerCompanionState("encouragement", "Let's re-watch this segment and try again!", 4000);
@@ -582,7 +622,7 @@ export default function LearnSessionPage() {
       }
       setActiveBreakpointIndex(null);
     }
-  }, [session, activeBreakpointIndex, isRetry, saveProgress, triggerCompanionState, t]);
+  }, [session, activeBreakpointIndex, isRetry, saveProgress, triggerCompanionState, t, pauseBreakpoints]);
 
   // ── Final quiz handlers ───────────────────────────────────────────────────
 
@@ -720,17 +760,17 @@ export default function LearnSessionPage() {
       setFinalQuizVisible(false);
       setFinalQuizIsRetry(false);
       triggerCompanionState("encouragement", "Let's review the end of the video and try again!", 4000);
-      const lastBpTimestamp = session && session.translatedContent.breakpoints.length > 0
-        ? session.translatedContent.breakpoints[session.translatedContent.breakpoints.length - 1].timestamp 
+      const lastBpTimestamp = session && pauseBreakpoints.length > 0
+        ? pauseBreakpoints[pauseBreakpoints.length - 1].timestamp
         : ((session?.metadata.duration ?? 60) - 60);
       videoPlayerRef.current?.seekTo(Math.max(0, lastBpTimestamp));
     }
-  }, [finalQuizIsRetry, triggerCompanionState, session]);
+  }, [finalQuizIsRetry, triggerCompanionState, session, pauseBreakpoints]);
 
   // ── Derived values ────────────────────────────────────────────────────────
 
   const breakpointsCleared = session?.progress.breakpointsCleared ?? [];
-  const totalBreakpoints = session?.translatedContent.breakpoints.length ?? 0;
+  const totalBreakpoints = pauseBreakpoints.length;
   const clearedCount = breakpointsCleared.filter(Boolean).length;
   const allBreakpointsCleared = totalBreakpoints > 0 && clearedCount === totalBreakpoints;
   const finalQuizPassed = session?.progress.finalQuizPassed === true;
@@ -785,7 +825,7 @@ export default function LearnSessionPage() {
 
   const activeBreakpoint =
     activeBreakpointIndex !== null
-      ? session.translatedContent.breakpoints[activeBreakpointIndex]
+      ? pauseBreakpoints[activeBreakpointIndex]
       : null;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -944,7 +984,7 @@ export default function LearnSessionPage() {
             <VideoPlayer
               ref={videoPlayerRef}
               videoUrl={session.videoUrl}
-              breakpoints={session.translatedContent.breakpoints}
+              breakpoints={pauseBreakpoints}
               translatedSubtitles={session.translatedContent.transcript}
               targetLocale={session.targetLocale}
               onBreakpointReached={handleBreakpointReached}
@@ -1012,7 +1052,7 @@ export default function LearnSessionPage() {
 
                     setIsTranslating(true);
                     try {
-                      const breakpointsToSend = session.originalBreakpoints ?? session.translatedContent.breakpoints;
+                      const breakpointsToSend = session.originalBreakpoints ?? pauseBreakpoints;
                       const res = await fetch("/api/translate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -1085,7 +1125,7 @@ export default function LearnSessionPage() {
                 {t("learn.checkpoints")}
               </h2>
               <div className="flex flex-col gap-2">
-                {session.translatedContent.breakpoints.map((bp, i) => {
+                {pauseBreakpoints.map((bp, i) => {
                   const cleared = session.progress.breakpointsCleared[i] ?? false;
                   const attempts = session.progress.attemptsPerBreakpoint[i] ?? 0;
                   const isActive = activeBreakpointIndex === i && quizVisible;

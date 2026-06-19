@@ -6,6 +6,7 @@ export interface TranscriptSegment {
 
 export type QuestionType = "mcq" | "text" | "code";
 export type QuizDifficulty = "easy" | "medium" | "hard";
+export type CheckpointMode = "sandbox" | "reverse";
 
 interface BaseQuestion {
   type: QuestionType;
@@ -49,6 +50,7 @@ export interface Breakpoint {
   questions: QuizQuestion[];
   primaryQuestions: MCQQuestion[];
   retryQuestions: MCQQuestion[];
+  checkpointMode?: CheckpointMode;
 }
 
 export interface QuizFrequency {
