@@ -809,15 +809,15 @@ export const meetingsRouter = createTRPCRouter({
       }
 
       let languageInstruction = "";
-      let langName = "English";
+      let langName = "English (Formal)";
       if (language) {
         const langMap: Record<string, string> = {
-          "en-US": "English",
-          "id-ID": "Indonesian",
-          "es-ES": "Spanish",
+          "en-GB": "English (Formal)",
+          "en-US": "English (Informal)",
           "hi-IN": "Hindi",
+          "mr-IN": "Marathi",
         };
-        langName = langMap[language] || "English";
+        langName = langMap[language] || language;
         languageInstruction = `
           CRITICAL MULTILINGUAL INSTRUCTION:
           You MUST conduct the tutoring session and respond in the following language: ${langName} (${language}).

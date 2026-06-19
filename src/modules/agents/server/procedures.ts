@@ -17,6 +17,7 @@ import {
 import { TRPCError } from "@trpc/server";
 
 import { agentPrompts } from "../prompts";
+import { AGENT_SUBJECT_OPTIONS } from "@/lib/constants/agent-options";
 
 export const agentsRouter = createTRPCRouter({
   update: protectedProcedure
@@ -27,13 +28,7 @@ export const agentsRouter = createTRPCRouter({
         .update(agents)
         .set({
           ...updateData,
-          subject: updateData.subject as
-            | "Math"
-            | "Bahasa Indonesia"
-            | "Natural Science"
-            | "Social Science"
-            | "English",
-          // | "Other",
+          subject: updateData.subject as (typeof AGENT_SUBJECT_OPTIONS)[number],
         })
         .where(and(eq(agents.id, id), eq(agents.userId, ctx.userId.user.id)))
         .returning();
@@ -153,8 +148,8 @@ export const agentsRouter = createTRPCRouter({
         });
       }
 
-      if (language && language !== "Standard") {
-        resolvedPrompt = `${resolvedPrompt}\n\nIMPORTANT: You must speak and explain everything in the ${language} dialect/language. Use its unique vocabulary, slang, and cultural context where appropriate to make the student feel comfortable.`;
+      if (language) {
+        resolvedPrompt = `${resolvedPrompt}\n\nIMPORTANT: You must speak and explain everything in ${language}. Keep the tone natural, clear, and consistent with the selected language throughout the session.`;
       }
 
       const [createdAgent] = await db

@@ -1,18 +1,14 @@
 import { z } from "zod";
+import {
+  AGENT_LANGUAGE_OPTIONS,
+  AGENT_SUBJECT_OPTIONS,
+} from "@/lib/constants/agent-options";
 
-// schemas.ts
 export const agentsInsertSchema = z.object({
   name: z.string(),
-  subject: z.enum([
-    "Math",
-    "Bahasa Indonesia",
-    "Natural Science",
-    "Social Science",
-    "English",
-  ]),
+  subject: z.enum(AGENT_SUBJECT_OPTIONS),
   prompt: z.string().optional(),
-  language: z.string(),
-  // Remove customSubject and prompt if not needed
+  language: z.enum(AGENT_LANGUAGE_OPTIONS),
 });
 
 export const agentsUpdateSchema = agentsInsertSchema.extend({
