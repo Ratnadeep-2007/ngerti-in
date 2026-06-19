@@ -44,7 +44,7 @@ ${existingMeeting.currentPrompt || "No additional context."}
 IMPORTANT: Keep your responses highly conversational, concise, and natural to be spoken aloud via TTS. Do not use markdown, lists, or complex formatting. Just plain spoken English. Respond directly to what the user just said.
 `;
 
-    const model = getGeminiModel("models/gemini-3.5-flash", {
+    const model = getGeminiModel("models/gemini-2.5-flash-lite", {
       systemInstruction,
     });
 

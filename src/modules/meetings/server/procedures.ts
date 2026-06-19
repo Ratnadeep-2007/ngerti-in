@@ -882,7 +882,7 @@ export const meetingsRouter = createTRPCRouter({
 
       let aiResponse = "";
       try {
-        const model = getGeminiModel("models/gemini-3.5-flash", {
+        const model = getGeminiModel("models/gemini-2.5-flash-lite", {
           systemInstruction,
         });
         const chat = model.startChat({
@@ -1038,7 +1038,7 @@ export const meetingsRouter = createTRPCRouter({
 
       let aiResponse = "";
       try {
-        const model = getGeminiModel("models/gemini-3.5-flash", {
+        const model = getGeminiModel("models/gemini-2.5-flash-lite", {
           systemInstruction,
         });
         const chat = model.startChat({

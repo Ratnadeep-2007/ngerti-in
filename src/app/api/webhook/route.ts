@@ -324,7 +324,7 @@ export async function POST(req: NextRequest) {
         };
       });
 
-    const model = getGeminiModel("models/gemini-3.5-flash", {
+    const model = getGeminiModel("models/gemini-2.5-flash-lite", {
       systemInstruction: instructions,
     });
     const chat = model.startChat({

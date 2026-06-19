@@ -193,7 +193,7 @@ const meetingsProcessing = inngest.createFunction(
       const [aiOutputRes, youtubeVideosRes] = await Promise.all([
         step.run("generate-gemini-summary", async () => {
           try {
-            const model = getGeminiModel("models/gemini-3.5-flash", { responseMimeType: "application/json" });
+            const model = getGeminiModel("models/gemini-2.5-flash-lite", { responseMimeType: "application/json" });
             const prompt = `System: ${summarizerSystemPrompt}\n\nUser: Process the following transcript and return JSON: ${JSON.stringify(transcriptWithSpeakers)}`;
             const result = await model.generateContent(prompt);
             const textResponse = result.response.text();

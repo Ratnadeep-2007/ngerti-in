@@ -117,6 +117,7 @@ export const useLiveTutor = ({
   const languageRef = useRef(language || "en-US");
   const callRef = useRef(call);
   const handleSendToAIRef = useRef<(text: string) => Promise<void>>(async () => {});
+  const spaceHoldActiveRef = useRef(false);
 
   useEffect(() => {
     personalityRef.current = personality;
@@ -615,6 +616,7 @@ export const useLiveTutor = ({
 
     if (!nextState) {
       pendingFinalizeRef.current = false;
+      spaceHoldActiveRef.current = false;
       transcriptBufferRef.current = "";
       latestInterimTranscriptRef.current = "";
       lastSentTextRef.current = "";
@@ -631,6 +633,44 @@ export const useLiveTutor = ({
       cleanupTtsSession();
     }
   }, [cleanupCaptureSession, cleanupTtsSession, hasMicPermission]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.tagName === "SELECT" ||
+        target.isContentEditable
+      );
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat || isTypingTarget(event.target)) return;
+      if (!isTutorEnabledRef.current || isThinkingRef.current || spaceHoldActiveRef.current) return;
+      event.preventDefault();
+      spaceHoldActiveRef.current = true;
+      void startHoldToTalk();
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || isTypingTarget(event.target)) return;
+      if (!spaceHoldActiveRef.current) return;
+      event.preventDefault();
+      spaceHoldActiveRef.current = false;
+      stopHoldToTalk();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [startHoldToTalk, stopHoldToTalk]);
 
   useEffect(() => {
     if (!call) return;
