@@ -6,6 +6,7 @@ import {
   QuizDifficulty,
   QuizQuestion,
   TextQuestion,
+  VoiceQuestion,
   TranscriptSegment,
 } from "./types";
 import { buildSmartPauseSchedule } from "./smart-pauses";
@@ -120,6 +121,7 @@ function questionLooksGrounded(question: QuizQuestion, transcriptWindow: Transcr
     question.type === "mcq" ? question.options.join(" ") : "",
     question.type === "code" ? question.initialCode : "",
     question.type === "text" ? question.expectedAnswer ?? "" : "",
+    question.type === "voice" ? question.expectedAnswer ?? "" : "",
   ]
     .join(" ")
     .toLowerCase();
@@ -160,6 +162,10 @@ function questionLooksValid(question: QuizQuestion, transcriptWindow: Transcript
     return question.language.trim().length > 0 && question.initialCode.trim().length > 0;
   }
 
+  if (question.type === "voice") {
+    return question.question.trim().length > 0;
+  }
+
   return true;
 }
 
@@ -191,6 +197,17 @@ function normalizeQuestion(raw: unknown): QuizQuestion | null {
       initialCode: typeof raw.initialCode === "string" ? raw.initialCode : "",
       solution: typeof raw.solution === "string" ? normalizeWhitespace(raw.solution) : undefined,
       expectedOutput: typeof raw.expectedOutput === "string" ? normalizeWhitespace(raw.expectedOutput) : undefined,
+    };
+    return normalized;
+  }
+
+  if (type === "voice") {
+    const normalized: VoiceQuestion = {
+      type: "voice",
+      question,
+      explanation,
+      expectedAnswer: typeof raw.expectedAnswer === "string" ? raw.expectedAnswer : undefined,
+      keyIdeas: toStringArray(raw.keyIdeas),
     };
     return normalized;
   }
@@ -251,7 +268,24 @@ function normalizeBreakpoint(
   };
 }
 
-function buildSystemPrompt(timestamp: number, questionCount: number, difficulty: QuizDifficulty, videoTitle: string): string {
+function buildSystemPrompt(
+  timestamp: number,
+  questionCount: number,
+  difficulty: QuizDifficulty,
+  videoTitle: string,
+  isFinalQuiz = false
+): string {
+  const finalQuizInstructions = isFinalQuiz
+    ? `
+Final quiz instructions:
+- This is a broad post-evaluation across the full video, not a narrow checkpoint.
+- Ask durable concept, application, debugging, or output-prediction questions from the actual subject matter.
+- Do not make the correct answer depend on one arbitrary variable name, literal value, or exact example from the reference answer.
+- For text questions, write expectedAnswer as the core concept/rubric, not one single fragile example.
+- For code questions, make the prompt and solution include clear acceptance criteria. Accept multiple valid implementations.
+- Avoid shallow questions about the course creator, audience, intro, goals, or generic motivation.`
+    : "";
+
   return `You are an expert educational evaluator for LingoLearn.
 
 You will receive a transcript window that ONLY includes content from 00:00 up to ${formatTime(timestamp)}.
@@ -259,6 +293,7 @@ Do not use concepts, terminology, examples, or answers that are introduced after
 
 Video Title: ${videoTitle}
 Difficulty: ${difficulty}
+${finalQuizInstructions}
 
 Task:
 - Create exactly one breakpoint for this window.
@@ -329,7 +364,8 @@ async function callGroq(
   timestamp: number,
   questionCount: number,
   difficulty: QuizDifficulty,
-  videoTitle: string
+  videoTitle: string,
+  isFinalQuiz = false
 ): Promise<Breakpoint | null> {
   const chunkText = transcriptWindow
     .map((segment) => `[${formatTime(segment.start)}] ${segment.text}`)
@@ -338,7 +374,7 @@ async function callGroq(
   const response = await client.chat.completions.create({
     model: GROQ_QUIZ_MODEL,
     messages: [
-      { role: "system", content: buildSystemPrompt(timestamp, questionCount, difficulty, videoTitle) },
+      { role: "system", content: buildSystemPrompt(timestamp, questionCount, difficulty, videoTitle, isFinalQuiz) },
       { role: "user", content: `Transcript window:\n${chunkText}` },
     ],
     temperature: 0.6,
@@ -382,6 +418,38 @@ export async function generateSingleBreakpoint(
   for (let attempt = 0; attempt <= 3; attempt++) {
     try {
       return await callGroq(client, windowTranscript, endSec, questionsPerBreakpoint, difficulty, videoTitle);
+    } catch (err) {
+      if (is429(err) && attempt < 3) {
+        const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 500;
+        console.warn(`Rate limit hit, retrying in ${Math.round(backoffMs)}ms (attempt ${attempt + 1}/3)`);
+        await delay(backoffMs);
+        continue;
+      }
+      if (!is429(err)) {
+        console.error("Non-rate-limit error in breakpoint generation:", err);
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  return null;
+}
+
+export async function generateBreakpointFromWindow(
+  transcriptWindow: TranscriptSegment[],
+  timestamp: number,
+  questionsPerBreakpoint: number,
+  difficulty: QuizDifficulty = "medium",
+  videoTitle: string
+): Promise<Breakpoint | null> {
+  const client = getClient();
+
+  if (transcriptWindow.length === 0) return null;
+
+  for (let attempt = 0; attempt <= 3; attempt++) {
+    try {
+      return await callGroq(client, transcriptWindow, timestamp, questionsPerBreakpoint, difficulty, videoTitle, true);
     } catch (err) {
       if (is429(err) && attempt < 3) {
         const backoffMs = Math.pow(2, attempt) * 1000 + Math.random() * 500;

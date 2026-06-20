@@ -7,7 +7,9 @@ import type {
   Breakpoint,
   CodeQuestion,
   QuizQuestion,
+  TranscriptSegment,
   TextQuestion,
+  VoiceQuestion,
 } from "@/lib/types";
 import QuizOption from "./QuizOption";
 import { useTranslation } from "@/contexts/UILanguageContext";
@@ -21,6 +23,7 @@ interface QuizPopupProps {
   breakpointIndex: number;
   totalBreakpoints: number;
   targetLocale: string;
+  contextTranscript?: TranscriptSegment[];
   onPass: () => void;
   onClose: () => void;
   isRetry: boolean;
@@ -32,6 +35,10 @@ interface AnswerState {
   selectedIndex: number | null;
   textValue: string;
   codeValue: string;
+  voiceText: string;
+  voiceScore: number | null;
+  voiceFeedback: string;
+  gradeReason: string;
   isRevealed: boolean;
   isCorrect: boolean | null;
 }
@@ -47,6 +54,10 @@ function buildInitialAnswers(count: number): AnswerState[] {
     selectedIndex: null,
     textValue: "",
     codeValue: "",
+    voiceText: "",
+    voiceScore: null,
+    voiceFeedback: "",
+    gradeReason: "",
     isRevealed: false,
     isCorrect: null,
   }));
@@ -64,7 +75,16 @@ function normalizeText(value: string): string {
 }
 
 function isOpenEndedQuestionType(type: QuizQuestion["type"]): boolean {
-  return type === "text";
+  return type === "text" || type === "voice";
+}
+
+function isVoiceQuestion(question: QuizQuestion | undefined): question is VoiceQuestion {
+  return question?.type === "voice";
+}
+
+function getRequiredCorrect(total: number, isFinalQuiz: boolean): number {
+  if (total <= 0) return 0;
+  return isFinalQuiz ? Math.max(1, Math.ceil(total * 0.5)) : total;
 }
 
 function getMonacoLanguage(language: string): string {
@@ -205,15 +225,18 @@ function ReviewCard({
 }) {
   return (
     <div
-      className="rounded-xl border border-border px-4 py-3.5 flex flex-col gap-2.5"
-      style={{ background: "rgba(37,37,54,0.7)" }}
+      className="rounded-xl border px-4 py-3.5 flex flex-col gap-2.5"
+      style={{
+        background: "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(17,24,39,0.96) 100%)",
+        borderColor: "rgba(148,163,184,0.28)",
+      }}
     >
       <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-foreground leading-relaxed">
-          <span className="text-muted mr-1">◆</span>
+        <p className="text-xs font-semibold text-slate-100 leading-relaxed">
+          <span className="text-slate-400 mr-1">◆</span>
           {question.question}
         </p>
-        <span className="text-[10px] uppercase tracking-wider rounded-full px-2 py-0.5 border border-border text-muted">
+        <span className="text-[10px] uppercase tracking-wider rounded-full px-2 py-0.5 border border-slate-600 text-slate-300">
           {question.type}
         </span>
       </div>
@@ -244,14 +267,14 @@ function ReviewCard({
       )}
 
       {question.type === "text" && (
-        <div className="flex flex-col gap-1 text-xs text-muted/90">
+        <div className="flex flex-col gap-1 text-xs text-slate-200/90">
           <p>
-            <span className="font-semibold text-foreground">Your answer:</span>{" "}
+            <span className="font-semibold text-slate-100">Your answer:</span>{" "}
             {answer.textValue || "No answer"}
           </p>
           {question.expectedAnswer && (
             <p>
-              <span className="font-semibold text-foreground">Expected answer:</span>{" "}
+              <span className="font-semibold text-slate-100">Expected answer:</span>{" "}
               {question.expectedAnswer}
             </p>
           )}
@@ -259,26 +282,53 @@ function ReviewCard({
       )}
 
       {question.type === "code" && (
-        <div className="flex flex-col gap-1 text-xs text-muted/90">
+        <div className="flex flex-col gap-1 text-xs text-slate-200/90">
           <p>
-            <span className="font-semibold text-foreground">Language:</span>{" "}
+            <span className="font-semibold text-slate-100">Language:</span>{" "}
             {question.language}
           </p>
-          <pre className="rounded-lg border border-border bg-black/20 p-3 overflow-x-auto text-[11px] leading-relaxed">
+          <pre className="rounded-lg border border-slate-700 bg-slate-950/80 p-3 overflow-x-auto text-[11px] leading-relaxed text-slate-100">
             <code>{answer.codeValue || question.initialCode}</code>
           </pre>
           {question.solution && (
             <p>
-              <span className="font-semibold text-foreground">Expected answer:</span>{" "}
+              <span className="font-semibold text-slate-100">Expected answer:</span>{" "}
               {question.solution}
             </p>
           )}
         </div>
       )}
 
+      {question.type === "voice" && (
+        <div className="flex flex-col gap-1.5 text-xs text-slate-200/90">
+          <p>
+            <span className="font-semibold text-slate-100">Your summary:</span>{" "}
+            {answer.voiceText || "No transcript captured"}
+          </p>
+          {typeof answer.voiceScore === "number" && (
+            <p>
+              <span className="font-semibold text-slate-100">Score:</span>{" "}
+              {answer.voiceScore}/10
+            </p>
+          )}
+          {answer.voiceFeedback && (
+            <p className="leading-relaxed">
+              <span className="font-semibold text-slate-100">Feedback:</span>{" "}
+              {answer.voiceFeedback}
+            </p>
+          )}
+        </div>
+      )}
+
       {question.explanation && (
-        <p className="text-xs text-muted/80 leading-relaxed border-t border-border pt-2">
+        <p className="text-xs text-slate-300 leading-relaxed border-t border-slate-700 pt-2">
           💡 {question.explanation}
+        </p>
+      )}
+
+      {answer.gradeReason && (
+        <p className="text-xs text-slate-200 leading-relaxed border-t border-slate-700 pt-2">
+          AI feedback: {answer.gradeReason}
         </p>
       )}
     </div>
@@ -295,7 +345,7 @@ function SolutionSummary({
   const { t } = useTranslation();
   return (
     <div className="w-full flex flex-col gap-4 mt-2">
-      <p className="text-xs font-semibold text-muted uppercase tracking-wider text-center">
+      <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider text-center">
         {t("quiz.reviewAnswers")}
       </p>
       {questions.map((question, i) => (
@@ -314,6 +364,7 @@ function QuizPopupInner({
   breakpointIndex,
   totalBreakpoints,
   targetLocale,
+  contextTranscript = [],
   onPass,
   onClose,
   isRetry,
@@ -343,15 +394,32 @@ function QuizPopupInner({
   const [phase, setPhase] = useState<Phase>("answering");
   const [scoreCount, setScoreCount] = useState<{ correct: number; total: number } | null>(null);
   const [isCheckingAnswer, setIsCheckingAnswer] = useState(false);
+  const [voiceStage, setVoiceStage] = useState<"idle" | "recording" | "transcribing" | "grading">("idle");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const firstFocusRef = useRef<HTMLButtonElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
 
   const currentQuestion = questions[currentIndex];
   const currentAnswer = answers[currentIndex];
+  const isVoiceFlow = isVoiceQuestion(currentQuestion);
 
   // Focus trap + initial focus
   useEffect(() => {
     firstFocusRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+      mediaStreamRef.current = null;
+    };
   }, []);
 
   // Close on Escape
@@ -395,10 +463,147 @@ function QuizPopupInner({
     );
   }, [currentIndex]);
 
+  const resetVoiceCapture = useCallback(() => {
+    mediaRecorderRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    voiceChunksRef.current = [];
+    setVoiceStage("idle");
+  }, []);
+
+  const recordVoiceAnswer = useCallback(async () => {
+    if (!isVoiceFlow || !currentQuestion) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("Microphone recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      setVoiceError(null);
+      setVoiceStage("recording");
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      voiceChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          voiceChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const blob = new Blob(voiceChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        resetVoiceCapture();
+
+        if (blob.size === 0) {
+          setVoiceError("No audio was captured. Please try again.");
+          return;
+        }
+
+        setVoiceStage("transcribing");
+
+        try {
+          const formData = new FormData();
+          formData.append(
+            "audio",
+            new File([blob], "voice-summary.webm", { type: blob.type || "audio/webm" })
+          );
+
+          const transcribeResponse = await fetch("/api/transcribe-audio", {
+            method: "POST",
+            body: formData,
+          });
+          const transcribeData = (await transcribeResponse.json()) as {
+            transcript?: string;
+            error?: string;
+          };
+
+          if (!transcribeResponse.ok) {
+            throw new Error(transcribeData.error || "Transcription failed");
+          }
+
+          const spokenAnswer = (transcribeData.transcript ?? "").trim();
+          if (!spokenAnswer) {
+            throw new Error("No speech was detected. Please try again.");
+          }
+
+          setVoiceStage("grading");
+          const gradeResponse = await fetch("/api/grade-voice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              question: currentQuestion,
+              spokenAnswer,
+              transcriptContext: contextTranscript,
+            }),
+          });
+
+          const gradeData = (await gradeResponse.json()) as {
+            score?: number;
+            feedback?: string;
+            error?: string;
+          };
+
+          if (!gradeResponse.ok) {
+            throw new Error(gradeData.error || "Voice grading failed");
+          }
+
+          const score = Number.isFinite(gradeData.score) ? Math.max(0, Math.min(10, Number(gradeData.score))) : 0;
+          const feedback = typeof gradeData.feedback === "string" && gradeData.feedback.trim()
+            ? gradeData.feedback.trim()
+            : "No feedback was returned.";
+
+          setAnswers((prev) =>
+            prev.map((answer, index) =>
+              index === currentIndex
+                ? {
+                    ...answer,
+                    voiceText: spokenAnswer,
+                    voiceScore: score,
+                    voiceFeedback: feedback,
+                    isRevealed: true,
+                    isCorrect: score >= 7,
+                  }
+                : answer
+            )
+          );
+          setPhase("reviewing");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Voice check failed.";
+          setVoiceError(message);
+          setPhase("answering");
+        } finally {
+          setVoiceStage("idle");
+        }
+      };
+
+      recorder.start();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to start recording.";
+      setVoiceError(message);
+      resetVoiceCapture();
+    }
+  }, [contextTranscript, currentIndex, currentQuestion, isVoiceFlow, resetVoiceCapture]);
+
+  const stopVoiceAnswer = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      setVoiceStage("transcribing");
+      mediaRecorderRef.current.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!currentQuestion) return;
     if (isCheckingAnswer) return;
+    if (currentQuestion.type === "voice") return;
     let isCorrect = false;
+    let gradeReason = "";
 
     if (currentQuestion.type === "mcq") {
       if (currentAnswer.selectedIndex === null) return;
@@ -413,16 +618,21 @@ function QuizPopupInner({
           body: JSON.stringify({
             question: currentQuestion,
             answer: answerPayload,
+            transcriptContext: contextTranscript,
+            isFinalQuiz,
           }),
         });
         if (response.ok) {
-          const result = (await response.json()) as { correct?: boolean };
+          const result = (await response.json()) as { correct?: boolean; reason?: string };
           isCorrect = Boolean(result.correct);
+          gradeReason = typeof result.reason === "string" ? result.reason : "";
         } else {
           isCorrect = false; // Graceful fallback on API failure
+          gradeReason = "The AI grader could not evaluate this answer.";
         }
       } catch {
         isCorrect = false; // Graceful fallback on network failure
+        gradeReason = "The AI grader could not be reached.";
       } finally {
         setIsCheckingAnswer(false);
       }
@@ -431,14 +641,18 @@ function QuizPopupInner({
     setAnswers((prev) =>
       prev.map((a, i) =>
         i === currentIndex
-          ? { ...a, isRevealed: true, isCorrect }
+          ? { ...a, isRevealed: true, isCorrect, gradeReason }
           : a
       )
     );
     setPhase("reviewing");
-  }, [currentAnswer, currentIndex, currentQuestion, isCheckingAnswer]);
+  }, [contextTranscript, currentAnswer, currentIndex, currentQuestion, isCheckingAnswer, isFinalQuiz]);
 
   const handleNext = useCallback(() => {
+    if (currentQuestion?.type === "voice") {
+      onPass();
+      return;
+    }
     const isLast = currentIndex === questions.length - 1;
 
     if (isLast) {
@@ -449,8 +663,7 @@ function QuizPopupInner({
       const correctCount = updatedAnswers.filter((a) => a.isCorrect === true).length;
       const total = updatedAnswers.length;
       setScoreCount({ correct: correctCount, total });
-      const PASS_THRESHOLD = isFinalQuiz ? 0.7 : 1.0;
-      const passed = correctCount / total >= PASS_THRESHOLD;
+      const passed = correctCount >= getRequiredCorrect(total, isFinalQuiz);
       setPhase(passed ? "passed" : "failed");
       if (passed) {
         // Slight delay so the "passed" animation has a moment to render
@@ -460,11 +673,31 @@ function QuizPopupInner({
       setCurrentIndex((prev) => prev + 1);
       setPhase("answering");
     }
-  }, [answers, currentIndex, isFinalQuiz, onPass, questions.length]);
+  }, [answers, currentIndex, currentQuestion, isFinalQuiz, onPass, questions.length]);
 
   const handleTryAgain = useCallback(() => {
+    if (currentQuestion?.type === "voice") {
+      setAnswers((prev) =>
+        prev.map((answer, index) =>
+          index === currentIndex
+            ? {
+                ...answer,
+                voiceText: "",
+                voiceScore: null,
+                voiceFeedback: "",
+                isRevealed: false,
+                isCorrect: null,
+              }
+            : answer
+        )
+      );
+      setVoiceError(null);
+      setPhase("answering");
+      resetVoiceCapture();
+      return;
+    }
     onClose(); // Parent will re-open with isRetry=true
-  }, [onClose]);
+  }, [currentIndex, currentQuestion?.type, onClose, resetVoiceCapture]);
 
   // ---------------------------------------------------------------------------
   // Render helpers
@@ -539,11 +772,14 @@ function QuizPopupInner({
         {/* --- Modal panel --- */}
         <div
           ref={modalRef}
-          className="relative flex w-full flex-col overflow-hidden border border-border bg-surface shadow-2xl rounded-t-2xl sm:rounded-2xl"
+          className="relative flex w-full flex-col overflow-hidden border shadow-2xl rounded-t-2xl sm:rounded-2xl text-slate-100"
           style={{
             animation: "quiz-modal-in 0.4s cubic-bezier(0.22,1,0.36,1) forwards",
             maxHeight: "calc(100dvh - 0.75rem)",
             maxWidth: "min(48rem, calc(100vw - 0.75rem))",
+            background:
+              "linear-gradient(180deg, rgba(14,19,32,0.98) 0%, rgba(22,28,42,0.98) 100%)",
+            borderColor: "rgba(148,163,184,0.24)",
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -568,10 +804,10 @@ function QuizPopupInner({
                   className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
                   style={{
                     background: isRetry
-                      ? "rgba(253,203,110,0.15)"
-                      : "rgba(108,92,231,0.15)",
-                    color: isRetry ? "var(--warning)" : "var(--primary-text)",
-                    border: `1px solid ${isRetry ? "rgba(253,203,110,0.3)" : "rgba(108,92,231,0.3)"}`,
+                      ? "rgba(245,158,11,0.16)"
+                      : "rgba(96,165,250,0.16)",
+                    color: isRetry ? "#fbbf24" : "#93c5fd",
+                    border: `1px solid ${isRetry ? "rgba(245,158,11,0.35)" : "rgba(96,165,250,0.35)"}`,
                   }}
                 >
                   {isRetry ? (
@@ -591,13 +827,13 @@ function QuizPopupInner({
                     </>
                   )}
                 </span>
-                <span className="text-xs text-muted font-medium">
+                <span className="text-xs text-slate-300 font-medium">
                   {t("quiz.breakpoint", { current: breakpointIndex + 1, total: totalBreakpoints })}
                 </span>
               </div>
 
               {/* Topic title */}
-              <h2 className="text-sm font-semibold text-foreground leading-snug truncate">
+              <h2 className="text-sm font-semibold text-slate-100 leading-snug truncate">
                 {breakpoint.topic}
               </h2>
             </div>
@@ -607,7 +843,7 @@ function QuizPopupInner({
               ref={firstFocusRef}
               type="button"
               onClick={onClose}
-              className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-muted hover:text-foreground hover:bg-surface-light transition-colors duration-150"
+              className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:text-slate-100 hover:bg-white/10 transition-colors duration-150"
               aria-label="Close quiz"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
@@ -620,7 +856,7 @@ function QuizPopupInner({
           {/* ----------------------------------------------------------------
               BODY (scrollable)
           ---------------------------------------------------------------- */}
-          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5 flex flex-col gap-4 sm:gap-5">
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5 flex flex-col gap-4 sm:gap-5 text-slate-100">
 
             {/* === PASSED PANEL === */}
             {phase === "passed" && (
@@ -636,7 +872,7 @@ function QuizPopupInner({
                     </p>
                   )}
                   {!isFinalQuiz && (
-                    <p className="text-sm text-muted max-w-xs">
+                    <p className="text-sm text-slate-300 max-w-xs">
                       {t("quiz.perfectScoreDesc")}
                     </p>
                   )}
@@ -682,15 +918,15 @@ function QuizPopupInner({
                     {t("quiz.notQuite")}
                   </h3>
                   {isFinalQuiz && scoreCount ? (
-                    <p className="text-sm text-muted max-w-xs">
+                    <p className="text-sm text-slate-300 max-w-xs">
                       {t("quiz.failedScore", {
                         correct: scoreCount.correct,
                         total: scoreCount.total,
-                        required: Math.ceil(scoreCount.total * 0.7),
+                        required: getRequiredCorrect(scoreCount.total, true),
                       })}
                     </p>
                   ) : (
-                    <p className="text-sm text-muted max-w-xs">
+                    <p className="text-sm text-slate-300 max-w-xs">
                       {t("quiz.notQuiteDesc")}
                     </p>
                   )}
@@ -714,7 +950,7 @@ function QuizPopupInner({
                 )}
 
                 {/* Question counter */}
-                <p className="text-xs text-muted font-medium text-center">
+                <p className="text-xs text-slate-300 font-medium text-center">
                   {t("quiz.questionOf", { current: currentIndex + 1, total: questions.length })}
                 </p>
 
@@ -773,7 +1009,7 @@ function QuizPopupInner({
                       placeholder={currentQuestion.placeholder || "Type your answer here..."}
                       className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3.5 text-[15px] leading-6 text-white placeholder:text-slate-400 outline-none transition-colors focus:border-[var(--primary)] focus:ring-2 focus:ring-[rgba(108,92,231,0.18)] disabled:opacity-60"
                     />
-                    <p className="text-[11px] text-muted">
+                    <p className="text-[11px] text-slate-300">
                       Short answers are checked against the expected response or key ideas.
                     </p>
                   </div>
@@ -781,11 +1017,11 @@ function QuizPopupInner({
 
                 {currentQuestion.type === "code" && (
                   <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between text-xs text-muted">
+                    <div className="flex items-center justify-between text-xs text-slate-300">
                       <span className="font-semibold uppercase tracking-wider">
                         Language: {currentQuestion.language}
                       </span>
-                      <span className="rounded-full border border-border px-2 py-0.5">
+                      <span className="rounded-full border border-slate-600/80 px-2 py-0.5 text-slate-100 bg-slate-900/70">
                         Monaco Editor
                       </span>
                     </div>
@@ -808,9 +1044,75 @@ function QuizPopupInner({
                         }}
                       />
                     </div>
-                    <p className="text-[11px] text-muted">
+                    <p className="text-[11px] text-slate-300">
                       This is a code editor scaffold for now. Execution and linting can be added next.
                     </p>
+                  </div>
+                )}
+
+                {currentQuestion.type === "voice" && (
+                  <div className="flex flex-col gap-3">
+                    <div
+                      className="rounded-2xl border border-white/10 px-4 py-4 text-sm text-slate-200"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(15,23,36,0.95) 0%, rgba(20,26,40,0.9) 100%)",
+                      }}
+                    >
+                      <p className="font-semibold text-white leading-6">
+                        Speak a short summary of what you learned so far.
+                      </p>
+                      <p className="mt-2 text-xs leading-relaxed text-slate-300/90">
+                        We will transcribe your audio, then grade the factual accuracy against the video context only.
+                      </p>
+                    </div>
+
+                    {voiceError && (
+                      <div className="rounded-xl border border-[rgba(225,112,85,0.35)] bg-[rgba(225,112,85,0.08)] px-4 py-3 text-sm text-[var(--error)]">
+                        {voiceError}
+                      </div>
+                    )}
+
+                    {(voiceStage === "transcribing" || voiceStage === "grading") && (
+                      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+                        {voiceStage === "transcribing" ? "Transcribing your voice..." : "Grading your summary..."}
+                      </div>
+                    )}
+
+                    {currentAnswer.voiceText && (
+                      <div className="rounded-2xl border border-border bg-black/20 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-wider text-slate-300 font-semibold mb-1">
+                          Transcript
+                        </p>
+                        <p className="text-sm leading-6 text-foreground/90">
+                          {currentAnswer.voiceText}
+                        </p>
+                      </div>
+                    )}
+
+                    {currentAnswer.isRevealed && currentAnswer.voiceFeedback && (
+                      <div
+                        className="rounded-2xl border px-4 py-4"
+                        style={{
+                          borderColor: "rgba(0,184,148,0.28)",
+                          background: "rgba(0,184,148,0.08)",
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-success">
+                            Score
+                          </p>
+                          {typeof currentAnswer.voiceScore === "number" && (
+                            <span className="rounded-full border border-success/30 bg-success/10 px-3 py-1 text-sm font-bold text-success">
+                              {currentAnswer.voiceScore}/10
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-foreground/90">
+                          {currentAnswer.voiceFeedback}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -848,7 +1150,7 @@ function QuizPopupInner({
                         <line x1="12" y1="8" x2="12.01" y2="8" />
                       </svg>
                     </span>
-                    <p className="text-xs leading-relaxed text-foreground/80">
+                    <p className="text-xs leading-relaxed text-slate-200">
                       {currentQuestion.explanation}
                     </p>
                   </div>
@@ -862,7 +1164,7 @@ function QuizPopupInner({
           ---------------------------------------------------------------- */}
           <div className="shrink-0 border-t border-border px-4 py-4 sm:px-5 flex gap-3">
             {/* Answering phase: Submit */}
-                {phase === "answering" && (
+            {phase === "answering" && !isVoiceFlow && (
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -881,8 +1183,46 @@ function QuizPopupInner({
               </button>
             )}
 
+            {phase === "answering" && isVoiceFlow && (
+              <>
+                <button
+                  type="button"
+                  onClick={recordVoiceAnswer}
+                  disabled={voiceStage !== "idle"}
+                  className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    background:
+                      voiceStage !== "idle"
+                        ? "var(--surface-light)"
+                        : "linear-gradient(135deg, var(--primary) 0%, #8b7cf8 100%)",
+                    boxShadow:
+                      voiceStage !== "idle" ? "none" : "0 4px 14px rgba(108,92,231,0.35)",
+                  }}
+                >
+                  Start Speaking
+                </button>
+                <button
+                  type="button"
+                  onClick={stopVoiceAnswer}
+                  disabled={voiceStage !== "recording"}
+                  className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    background:
+                      voiceStage !== "recording"
+                        ? "var(--surface-light)"
+                        : "linear-gradient(135deg, var(--warning) 0%, #f0b429 100%)",
+                    boxShadow:
+                      voiceStage !== "recording" ? "none" : "0 4px 14px rgba(253,203,110,0.35)",
+                    color: voiceStage !== "recording" ? "var(--muted)" : "#1a1a24",
+                  }}
+                >
+                  Stop Speaking
+                </button>
+              </>
+            )}
+
             {/* Reviewing phase: Next / Finish */}
-            {phase === "reviewing" && (
+            {phase === "reviewing" && !isVoiceFlow && (
               <button
                 type="button"
                 onClick={handleNext}
@@ -898,6 +1238,29 @@ function QuizPopupInner({
               >
                 {isLastQuestion ? t("quiz.seeResults") : t("quiz.nextQuestion")}
               </button>
+            )}
+
+            {phase === "reviewing" && isVoiceFlow && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleTryAgain}
+                  className="rounded-2xl border border-slate-600 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:text-white hover:border-slate-400"
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={onPass}
+                  className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200"
+                  style={{
+                    background: "linear-gradient(135deg, var(--success) 0%, #00d4a8 100%)",
+                    boxShadow: "0 4px 14px rgba(0,184,148,0.35)",
+                  }}
+                >
+                  Continue
+                </button>
+              </>
             )}
 
             {/* Passed phase: Continue (auto-closes, but give user manual control) */}
@@ -922,7 +1285,7 @@ function QuizPopupInner({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted hover:text-foreground hover:border-border/70 transition-colors duration-150"
+                  className="rounded-xl border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white hover:border-slate-400 transition-colors duration-150"
                 >
                   {t("quiz.close")}
                 </button>

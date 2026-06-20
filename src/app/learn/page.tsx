@@ -6,13 +6,11 @@ import Link from "next/link";
 import { COMPANIONS } from "@/lib/companions";
 import { getAllLanguages } from "@/lib/languages";
 import type { LearningMode, QuizDifficulty } from "@/lib/types";
-import { getQuizPlan } from "@/lib/quiz-planner";
-import { buildSmartPauseSchedule } from "@/lib/smart-pauses";
+import { buildVoiceSummaryBreakpoints } from "@/lib/voice-checkpoints";
 import type {
   TranscriptSegment,
   VideoMetadata,
   QuizFrequency,
-  Breakpoint,
   TranslatedContent,
 } from "@/lib/types";
 import { createSession } from "@/lib/session";
@@ -139,15 +137,7 @@ function HomePageInner() {
       setCurrentStep(2);
 
       const duration = extractData.metadata.duration;
-      const schedule = buildSmartPauseSchedule(duration, quizDifficulty);
-      const emptyBreakpoints: Breakpoint[] = schedule.map((sch) => ({
-        timestamp: sch.timestamp,
-        topic: "Learning Checkpoint",
-        questions: [],
-        primaryQuestions: [],
-        retryQuestions: [],
-        checkpointMode: sch.checkpointMode,
-      }));
+      const voiceBreakpoints = buildVoiceSummaryBreakpoints(duration);
 
       setCurrentStep(4);
 
@@ -157,7 +147,7 @@ function HomePageInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcript: extractData.transcript,
-          breakpoints: emptyBreakpoints,
+          breakpoints: voiceBreakpoints,
           sourceLocale: extractData.detectedLocale,
           targetLocale,
         }),
@@ -192,7 +182,7 @@ function HomePageInner() {
         companionId: mode === "jolly" ? companionId : null,
         originalTranscript: extractData.transcript,
         translatedContent: translateData.translatedContent,
-        originalBreakpoints: emptyBreakpoints,
+        originalBreakpoints: voiceBreakpoints,
         quizFrequency: extractData.quizFrequency,
         quizDifficulty,
         userName: userName.trim(),

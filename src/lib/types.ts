@@ -4,7 +4,7 @@ export interface TranscriptSegment {
   text: string;
 }
 
-export type QuestionType = "mcq" | "text" | "code";
+export type QuestionType = "mcq" | "text" | "code" | "voice";
 export type QuizDifficulty = "easy" | "medium" | "hard";
 export type CheckpointMode = "sandbox" | "reverse";
 
@@ -35,7 +35,13 @@ export interface CodeQuestion extends BaseQuestion {
   expectedOutput?: string;
 }
 
-export type QuizQuestion = MCQQuestion | TextQuestion | CodeQuestion;
+export interface VoiceQuestion extends BaseQuestion {
+  type: "voice";
+  expectedAnswer?: string;
+  keyIdeas?: string[];
+}
+
+export type QuizQuestion = MCQQuestion | TextQuestion | CodeQuestion | VoiceQuestion;
 
 export interface VideoMetadata {
   title: string;

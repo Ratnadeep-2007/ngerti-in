@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateSingleBreakpoint } from "@/lib/groq";
+import { generateBreakpointFromWindow, generateSingleBreakpoint } from "@/lib/groq";
 import { TranscriptSegment, QuizDifficulty } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (startTime !== undefined && endTime !== undefined) {
+    if (startTime !== undefined && endTime !== undefined && startTime !== endTime) {
       const bp = await generateSingleBreakpoint(
         transcript,
         startTime,
@@ -35,10 +35,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ breakpoints: bp ? [bp] : [] });
     }
 
-    return NextResponse.json(
-      { error: "startTime and endTime are required for JIT generation" },
-      { status: 400 }
+    const finalQuiz = await generateBreakpointFromWindow(
+      transcript,
+      transcript.reduce((max, segment) => Math.max(max, segment.end), 0),
+      questionsPerBreakpoint,
+      difficulty ?? "medium",
+      videoTitle ?? "Learning Video"
     );
+
+    return NextResponse.json({ breakpoints: finalQuiz ? [finalQuiz] : [] });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to generate quizzes";

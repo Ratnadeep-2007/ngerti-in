@@ -181,7 +181,7 @@ export const defaultTranslations = {
   "profile.save": "Save",
   "profile.editUsername": "Edit Username",
   // Footer
-  "footer.builtBy": "Built with ❤️ by Prateek",
+  "footer.builtBy": "Built with ❤️ by Ruby Team",
   "footer.poweredBy": "Powered by Lingo.dev & YouTube",
   "footer.credits": "[Credits]",
   "footer.specialThanks": "✦ SPECIAL THANKS ✦",
@@ -192,7 +192,7 @@ export const defaultTranslations = {
   "footer.designs": "Soul-Knight",
   "footer.collaborators": "Galahad & Elite Knight",
   "footer.delivery": "Edge Delivery",
-  "footer.madeWithLove": "Made with ❤️ by Prateek",
+  "footer.madeWithLove": "Made with ❤️ by Ruby Team",
   // Setup
   "setup.chooseCompanion": "Choose your companion",
   "setup.alreadyHaveSession": "Already have a session?",
