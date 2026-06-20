@@ -12,11 +12,7 @@ export default function MyLearningsPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"ongoing" | "completed">("ongoing");
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  function loadSessions() {
+  const loadSessions = () => {
     const saved = localStorage.getItem("lingodev_sessions");
     if (saved) {
       try {
@@ -27,7 +23,11 @@ export default function MyLearningsPage() {
       }
     }
     setLoading(false);
-  }
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
 
   function deleteSession(id: string) {
     const updated = sessions.filter((s) => s.id !== id);

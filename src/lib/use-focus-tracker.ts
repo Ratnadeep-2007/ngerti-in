@@ -187,6 +187,12 @@ export function useFocusTracker() {
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
   const [latestFaceLandmarks, setLatestFaceLandmarks] = useState<FaceLandmarkPoint[] | null>(null);
 
+  // States for real-time reactivity in meetings & student learning
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [isDistracted, setIsDistracted] = useState(false);
+  const [latestSample, setLatestSample] = useState<FocusMetricSample | null>(null);
+  const consecutiveDistractedFramesRef = useRef(0);
+
   const stopLoop = useCallback(() => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
@@ -207,13 +213,14 @@ export function useFocusTracker() {
     restoreConsoleRef.current = installMediaPipeBannerFilter();
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const cameraStream = await navigator.mediaDevices.getUserMedia({
         video: { width: 320, height: 240, facingMode: "user" },
         audio: false,
       });
       permissionRef.current = "granted";
-      streamRef.current = stream;
-      setPreviewStream(stream);
+      streamRef.current = cameraStream;
+      setPreviewStream(cameraStream);
+      setStream(cameraStream);
 
       if (!hasShownToastRef.current) {
         toast.success("Camera is on");
@@ -223,7 +230,7 @@ export function useFocusTracker() {
       const video = document.createElement("video");
       video.muted = true;
       video.playsInline = true;
-      video.srcObject = stream;
+      video.srcObject = cameraStream;
       await video.play();
       videoRef.current = video;
 
@@ -254,13 +261,14 @@ export function useFocusTracker() {
             const previous = samplesRef.current[samplesRef.current.length - 1] ?? null;
             const faceLandmarks = result.faceLandmarks?.[0] ?? null;
             setLatestFaceLandmarks(faceLandmarks);
-            const nextSample = sampleFromLandmarks(now, faceLandmarks ?? undefined, previous);
-            samplesRef.current.push(nextSample);
+            const sample = sampleFromLandmarks(now, faceLandmarks ?? undefined, previous);
+            samplesRef.current.push(sample);
+            setLatestSample(sample);
 
             const recentSamples = samplesRef.current.slice(-Math.ceil(DISTRACTION_THRESHOLD_MS / SAMPLE_INTERVAL_MS));
-            const isDistracted = sampleLooksDistracted(nextSample, recentSamples);
+            const looksDistracted = sampleLooksDistracted(sample, recentSamples);
 
-            if (isDistracted) {
+            if (looksDistracted) {
               if (distractionSinceRef.current === null) {
                 distractionSinceRef.current = now;
               }
@@ -277,6 +285,17 @@ export function useFocusTracker() {
               distractionSinceRef.current = null;
               distractionToastShownRef.current = false;
             }
+
+            // Real-time distraction logic: face gone or gaze wandering
+            if (!sample.faceDetected || sample.eyeFocus < 0.55) {
+              consecutiveDistractedFramesRef.current += 1;
+              if (consecutiveDistractedFramesRef.current >= 8) { // ~1 second
+                setIsDistracted(true);
+              }
+            } else {
+              consecutiveDistractedFramesRef.current = 0;
+              setIsDistracted(false);
+            }
           } catch {
             // MediaPipe can throw while the camera is warming up; skip that frame.
           }
@@ -286,7 +305,8 @@ export function useFocusTracker() {
       };
 
       rafRef.current = requestAnimationFrame(tick);
-    } catch {
+    } catch (err) {
+      console.error("Camera startup failed", err);
       permissionRef.current = "denied";
       restoreConsoleRef.current?.();
       restoreConsoleRef.current = null;
@@ -300,14 +320,19 @@ export function useFocusTracker() {
     landmarkerRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
+    setStream(null);
     videoRef.current = null;
     setPreviewStream(null);
     setLatestFaceLandmarks(null);
     restoreConsoleRef.current?.();
     restoreConsoleRef.current = null;
+    setIsDistracted(false);
+    setLatestSample(null);
+    consecutiveDistractedFramesRef.current = 0;
+    hasStartedRef.current = false; // Reset to allow restarts
 
     return buildEvaluation(startedAtRef.current, permissionRef.current, samplesRef.current);
   }, [stopLoop]);
 
-  return { start, stopAndEvaluate, previewStream, latestFaceLandmarks };
+  return { start, stopAndEvaluate, previewStream, stream, isDistracted, latestSample, latestFaceLandmarks };
 }

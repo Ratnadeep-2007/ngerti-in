@@ -3,6 +3,7 @@ import "./globals.css";
 
 import { ThemeProvider } from "../components/ThemeProvider";
 import { UILanguageProvider } from "../contexts/UILanguageContext";
+import { AuthProvider } from "../contexts/AuthContext";
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
 import { Toaster } from "sonner";
@@ -23,12 +24,14 @@ export default function RootLayout({
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider>
           <UILanguageProvider>
-            <Navigation />
-            <main className="min-h-screen w-full pt-24">
-              {children}
-            </main>
-            <Footer />
-            <Toaster richColors position="top-right" />
+            <AuthProvider>
+              <Navigation />
+              <main className="min-h-screen w-full pt-24">
+                {children}
+              </main>
+              <Footer />
+              <Toaster richColors position="top-right" />
+            </AuthProvider>
           </UILanguageProvider>
         </ThemeProvider>
       </body>

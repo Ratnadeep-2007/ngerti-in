@@ -9,7 +9,6 @@ This specification defines the architectural pivot and feature mapping required 
 ### The Product: Lumina.ai (`negerti-in`)
 Lumina.ai is a personalized AI tutoring classroom application built on:
 - **Next.js 15+ (App Router)** & TypeScript
-- **Stream Video SDK** (WebRTC audio/video meetings)
 - **Deepgram Nova-2** (Speech-to-Text via WebSockets — fallback for voice inputs)
 - **Web Speech API** (Primary browser-native STT, zero latency, no key required)
 - **Google Gemini 2.5 Flash** (Reasoning engine — checkpoint generation + AI scoring)
@@ -17,7 +16,7 @@ Lumina.ai is a personalized AI tutoring classroom application built on:
 - **`youtube-transcript` NPM** (Free, no quota — fetches timestamped subtitles server-side)
 - **`react-player`** (YouTube iframe wrapper with `onProgress` checkpoint detection)
 - **`@monaco-editor/react`** (In-browser VS Code-grade IDE, zero latency)
-- **face-api.js** (Client-side confusion detection — Phase 4, deferred)
+- **Google MediaPipe Face Landmarker** (Client-side attentiveness & confusion detection via pupil/blendshape tracking)
 - **Neon Serverless Postgres** (Database — relational, free tier, Drizzle ORM)
 
 ---
@@ -40,13 +39,13 @@ Lumina.ai is a personalized AI tutoring classroom application built on:
 
 ## 2. Core Alignment Strategy: Passive to Active Sandbox
 
-Lumina.ai resolves **D2-PS2** by wrapping technical tutorials in an **Active Validation Sandbox**. Rather than passively watching a video, the student is joined in a "classroom session" with an AI Tutor. The tutorial video plays inside the UI alongside the AI Tutor and the Excalidraw whiteboard. 
+Lumina.ai resolves **D2-PS2** by wrapping technical tutorials in an **Active Validation Sandbox** designed as a single-user personal learning platform. The student inputs a YouTube tutorial URL, and the video plays inside the workspace alongside an AI Tutor panel. 
 
 The system implements **Forced Cognitive Friction** via a **Dual-Trigger Checkpoint Mechanism (Proactive & Reactive)**. The video player freezes and pushes the student into an active comprehension check under two circumstances:
 
-1. **Reactive Trigger (Confusion-Driven Checkpoint):**
-   - During video playback, `face-api.js` monitors the student's webcam feed in the background.
-   - If the system detects a sustained high confusion score (defined as a combined score of sadness, fear, and anger expressions exceeding `0.5` for 3 consecutive 2-second intervals, totaling 6 seconds) OR if the student manually clicks the "I'm Confused" button, the video player freezes immediately.
+1. **Reactive Trigger (Inattentiveness & Confusion Checkpoint):**
+   - During video playback, Google MediaPipe Face Landmarker monitors the student's webcam feed in the background to verify they are attentive and comprehending.
+   - If the system detects that the viewer is not attentive (e.g., eye gaze/irises looking away from the screen, head turned away, or eyes closed/drowsy) OR if it detects a sustained high confusion score (calculated via facial blendshape coefficients: brow furrowing + squints + mouth frowns exceeding `0.4` for 3 consecutive 2-second intervals, totaling 6 seconds) OR if the student manually clicks the "I'm Confused" button, the video player freezes immediately.
    - The AI Tutor interrupts playback, dynamically fetches the challenge associated with the current video segment, and initiates either **Sandbox Mode** or **Reverse Tutorial Mode**.
    
 2. **Proactive Trigger (Time-Based Checkpoint):**
@@ -61,11 +60,11 @@ To maximize the cognitive challenge, the system dynamically decides the evaluati
 ---
 
 ### Latency, Performance & CPU Management
-To prevent client-side latency and browser frame rate drops during background expression detection, Lumina.ai implements the following optimization patterns:
-* **TinyFaceDetector Engine:** Instead of the heavy `SSD Mobilenet v1` model, the app loads `TinyFaceDetector`. This model has a footprint of only ~1.5MB and is optimized for low-end mobile/web CPU execution.
-* **Throttled Inference Loop:** The detection loop runs at a strict throttled interval of **2000ms** rather than on every frame animation loop (`requestAnimationFrame`). This keeps CPU utilization minimal (~2-5% on modern processors).
-* **Automatic Disconnect & Cleanup:** The detector checks the video stream and camera state. If the user mutes their camera, pauses the video player, or navigates away, the loop is completely halted and resource handles are cleared from memory.
-* **Client Toggle Override:** Students can disable AI camera tracking at any time via a UI toggle. If disabled, the system falls back entirely to manual "I'm Confused" triggers and proactive time-based checkpoints.
+To prevent client-side latency and browser frame rate drops during background tracking, Lumina.ai implements the following optimization patterns:
+* **MediaPipe WebAssembly Engine:** Uses the lightweight Google MediaPipe Face Landmarker task model (~5.6MB) running on native WebAssembly (WASM) and WebGL/WebGPU acceleration.
+* **Throttled Inference Loop:** The tracking loops run at a strict throttled interval of **2000ms** instead of continuous animation frames. This keeps CPU utilization minimal (~1-3% on modern processors).
+* **Automatic Disconnect & Cleanup:** The landmarker disconnects when the camera is muted, playback is paused, or the student navigates away, clearing memory heaps.
+* **Client Toggle Override:** Students can disable camera tracking at any time via a UI toggle. If disabled, the system falls back entirely to manual "I'm Confused" triggers and proactive time-based checkpoints.
 
 ---
 
@@ -369,9 +368,9 @@ This section documents the confirmed technology choices, the rationale behind ea
 
 Our data model is deeply relational:
 ```
-user → agents → meetings → tutorial_videos → verification_ledger
+user → agents → sessions (meetings table) → tutorial_videos → verification_ledger
 ```
-Every `verificationLedger` entry has a hard foreign-key dependency on a `meeting`, which cascades to a `user`. This requires JOIN-capable relational semantics. MongoDB's document model would require manually encoding these relationships and would lose Drizzle ORM's type-safe query builder entirely.
+Every `verificationLedger` entry has a hard foreign-key dependency on a session (mapped to the existing `meetings` table for backward compatibility), which cascades to a `user`. This requires JOIN-capable relational semantics. MongoDB's document model would require manually encoding these relationships and would lose Drizzle ORM's type-safe query builder entirely.
 
 | Option | Verdict | Reason |
 | :--- | :--- | :--- |
@@ -440,7 +439,7 @@ Student pastes YouTube URL
 | Voice STT (Primary) | Web Speech API | ~100ms streaming | Free, browser-native |
 | Voice STT (Fallback) | Deepgram Nova-2 | ~200ms | $200 free credit |
 | AI Scoring (Reverse Tutorial) | Gemini 2.5 Flash (JSON schema) | ~1s | Free |
-| Confusion Detection | `face-api.js` TinyFaceDetector | ~15ms *(Phase 4)* | Free, client-side |
+| Attentiveness & Confusion | MediaPipe Face Landmarker | ~5ms | Free, client-side |
 | Session Storage | Neon Postgres + Drizzle | ~50ms | Free tier |
 
 **Total per-checkpoint interaction latency: ~1.5s–2s**
@@ -461,7 +460,7 @@ This is dominated entirely by the Gemini scoring call (~1s). Every other step is
 ### 2. Video Playback & Passive Watching
 - Aarav plays the video inside `TutorialSandbox`.
 - The video runs smoothly up to `05:19`. Aarav watches the instructor write basic routing code.
-- During playback, `face-api.js` monitors Aarav's webcam feed. If his confusion score rises above `0.5` for 6 seconds, the player pauses and the AI checks in: *"I noticed you might have found that segment difficult. Should I explain routing in a simpler way?"*
+- During playback, Google MediaPipe Face Landmarker monitors Aarav's webcam feed in the background. If his inattentiveness (eyes looking away/closed) or confusion blendshapes (brow furrowing) rise above the threshold for 6 seconds, the player pauses and the AI checks in: *"I noticed you might have found that segment difficult. Should I explain routing in a simpler way?"*
 
 ### 3. Checkpoint 1 (05:20): Sandbox Mode (IDE Input)
 - At exactly `05:20`, the `TutorialPlayer` detects the checkpoint and sets `isLocked` to `true`.
@@ -513,3 +512,18 @@ This is dominated entirely by the Gemini scoring call (~1s). Every other step is
   - **Verified MCQ Concept:** JSON response headers (`res.json`) — **Verified via Sandbox MCQ selection.**
   - **Verified Concept:** Express error middleware signature — **Verified via Reverse Tutorial explanation (Correctness: 95%, Clarity: 90%, Confidence: 88%).**
   - **Raw Output Archive:** Links directly to Aarav's code submission and his explanation voice transcript.
+
+---
+
+## 8. Post-Session Recap Ecosystem
+
+When a learning session finishes, the platform transitions the viewer to a comprehensive **Post-Session Recap Dashboard**. This portal retains the following four key learning reinforcement features:
+
+1. **Session Summary:** 
+   An automated markdown summary generated by the AI reasoning engine, highlighting the core technical concepts covered in the tutorial, key definitions, and code syntax references from the transcript.
+2. **Talk to AI (Recap Chat):** 
+   A conversational text interface that remains active after the video is finished. The AI Tutor uses the transcript and the session summary as context, allowing the student to ask follow-up questions, clarify doubts, or request custom explanations of any segment of the video.
+3. **Next Steps (Learning Path):** 
+   A personalized roadmap indicating the next topics, skills, or projects the student should explore next based on their checkpoint performance scores.
+4. **Similar YouTube Recommendations:** 
+   A curated list of related technical YouTube videos (fetching metadata and concept tags) recommended by the AI to reinforce or extend the student's mastery of the topic.
