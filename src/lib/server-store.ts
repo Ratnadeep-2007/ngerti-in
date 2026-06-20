@@ -15,6 +15,7 @@ export interface ServerLeaderboardEntry {
 }
 
 export interface MeetingParticipant {
+  participantId: string;
   meetingId: string;
   username: string;
   role: string;
@@ -32,7 +33,6 @@ interface GlobalStore {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var serverStore: GlobalStore | undefined;
 }
 
@@ -55,4 +55,3 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export { store };
-

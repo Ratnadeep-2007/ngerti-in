@@ -32,19 +32,27 @@ export async function POST(request: Request) {
     cleanupStaleParticipants();
 
     const body = await request.json();
-    const { meetingId, username, role, focusScore, isDistracted, action } = body;
+    const { meetingId, participantId, username, role, focusScore, isDistracted, action } = body;
 
     if (!meetingId || !username || !action) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    const identityMatch = (participant: MeetingParticipant) => {
+      if (participantId) {
+        return participant.participantId === participantId;
+      }
+      return participant.meetingId === meetingId && participant.username === username;
+    };
+
     if (action === "join") {
       // Remove existing to avoid duplicates
       store.participants = store.participants.filter(
-        (p) => !(p.meetingId === meetingId && p.username === username)
+        (p) => !identityMatch(p)
       );
 
       const newParticipant: MeetingParticipant = {
+        participantId: participantId || `${meetingId}:${username}`,
         meetingId,
         username,
         role,
@@ -56,7 +64,7 @@ export async function POST(request: Request) {
       store.participants.push(newParticipant);
     } else if (action === "heartbeat") {
       const p = store.participants.find(
-        (p) => p.meetingId === meetingId && p.username === username
+        (p) => identityMatch(p)
       );
       if (p) {
         p.lastSeen = Date.now();
@@ -65,6 +73,7 @@ export async function POST(request: Request) {
       } else {
         // If not found (e.g. server restarted or expired), treat it as a join
         const newParticipant: MeetingParticipant = {
+          participantId: participantId || `${meetingId}:${username}`,
           meetingId,
           username,
           role,
@@ -77,7 +86,7 @@ export async function POST(request: Request) {
       }
     } else if (action === "leave") {
       store.participants = store.participants.filter(
-        (p) => !(p.meetingId === meetingId && p.username === username)
+        (p) => !identityMatch(p)
       );
     }
 
