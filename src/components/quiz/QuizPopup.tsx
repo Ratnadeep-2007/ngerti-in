@@ -602,6 +602,24 @@ function QuizPopupInner({
     if (!currentQuestion) return;
     if (isCheckingAnswer) return;
     if (currentQuestion.type === "voice") return;
+
+    if (isFinalQuiz) {
+      setAnswers((prev) =>
+        prev.map((a, i) =>
+          i === currentIndex
+            ? {
+                ...a,
+                isRevealed: true,
+                isCorrect: true,
+                gradeReason: "Final quiz accepted.",
+              }
+            : a
+        )
+      );
+      setPhase("reviewing");
+      return;
+    }
+
     let isCorrect = false;
     let gradeReason = "";
 
@@ -663,7 +681,7 @@ function QuizPopupInner({
       const correctCount = updatedAnswers.filter((a) => a.isCorrect === true).length;
       const total = updatedAnswers.length;
       setScoreCount({ correct: correctCount, total });
-      const passed = correctCount >= getRequiredCorrect(total, isFinalQuiz);
+      const passed = isFinalQuiz ? true : correctCount >= getRequiredCorrect(total, isFinalQuiz);
       setPhase(passed ? "passed" : "failed");
       if (passed) {
         // Slight delay so the "passed" animation has a moment to render
