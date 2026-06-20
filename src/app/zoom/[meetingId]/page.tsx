@@ -11,6 +11,15 @@ interface FocusLogEntry {
   status: string;
 }
 
+function createParticipantId() {
+  if (typeof window !== "undefined" && window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  const randomPart = Math.random().toString(36).slice(2, 12);
+  return `participant_${Date.now().toString(36)}_${randomPart}`;
+}
+
 export default function ZoomMeetingRoom() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -51,7 +60,7 @@ export default function ZoomMeetingRoom() {
 
     const storageKey = "lumina_meeting_participant_id";
     const existing = window.sessionStorage.getItem(storageKey);
-    const id = existing || window.crypto.randomUUID();
+    const id = existing || createParticipantId();
 
     if (!existing) {
       window.sessionStorage.setItem(storageKey, id);
