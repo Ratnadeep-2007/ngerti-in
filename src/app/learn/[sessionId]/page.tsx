@@ -13,7 +13,6 @@ import { getSession, updateProgress, updateSession, saveFinalQuiz, markFinalQuiz
 import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
 import { getQuizPlan } from "@/lib/quiz-planner";
-import { buildSmartPauseSchedule } from "@/lib/smart-pauses";
 import type { Session, TranslatedContent, Breakpoint } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
 
@@ -396,21 +395,19 @@ export default function LearnSessionPage() {
     }
   }, [session]);
 
-  const pauseBreakpoints = useMemo(() => {
-    if (!session) return [];
+  const pauseBreakpoints = useMemo(
+    () => session?.translatedContent.breakpoints ?? [],
+    [session?.translatedContent.breakpoints]
+  );
 
-    const schedule = buildSmartPauseSchedule(
-      session.metadata.duration,
-      session.quizDifficulty,
-      session.translatedContent.breakpoints.length
-    );
+  const activeBreakpointTranscript = useMemo(() => {
+    if (!session || activeBreakpointIndex === null) return [];
+    const breakpoint = pauseBreakpoints[activeBreakpointIndex];
+    if (!breakpoint) return [];
 
-    return session.translatedContent.breakpoints.map((breakpoint, index) => ({
-      ...breakpoint,
-      timestamp: schedule[index]?.timestamp ?? breakpoint.timestamp,
-      checkpointMode: schedule[index]?.checkpointMode ?? breakpoint.checkpointMode,
-    }));
-  }, [session]);
+    const transcriptSource = session.rawTranscript ?? session.originalTranscript;
+    return transcriptSource.filter((segment) => segment.end <= breakpoint.timestamp);
+  }, [activeBreakpointIndex, pauseBreakpoints, session]);
 
   // ── Quiz callbacks ────────────────────────────────────────────────────────
 
@@ -514,6 +511,9 @@ export default function LearnSessionPage() {
 
   const handleVideoEnd = useCallback(async () => {
     if (!session) return;
+    if (quizVisible || activeBreakpointIndex !== null) {
+      return;
+    }
 
     // If already generated, auto-show the quiz popup
     if (session.finalQuiz !== undefined) {
@@ -538,6 +538,9 @@ export default function LearnSessionPage() {
           maxBreakpoints: 1,
           questionsPerBreakpoint,
           difficulty: sessionDifficulty,
+          startTime: session.metadata.duration,
+          endTime: session.metadata.duration,
+          videoTitle: session.metadata.title,
         }),
       });
 
@@ -580,7 +583,7 @@ export default function LearnSessionPage() {
     } finally {
       setIsGeneratingFinalQuiz(false);
     }
-  }, [session]);
+  }, [activeBreakpointIndex, quizVisible, session]);
 
   const handleTakeFinalQuiz = useCallback(async () => {
     if (!session) return;
@@ -1230,6 +1233,7 @@ export default function LearnSessionPage() {
           breakpointIndex={activeBreakpointIndex!}
           totalBreakpoints={totalBreakpoints}
           targetLocale={session.targetLocale}
+          contextTranscript={activeBreakpointTranscript}
           onPass={handleQuizPass}
           onClose={handleQuizClose}
           isRetry={isRetry}
@@ -1243,6 +1247,7 @@ export default function LearnSessionPage() {
           breakpointIndex={0}
           totalBreakpoints={1}
           targetLocale={session.targetLocale}
+          contextTranscript={session.rawTranscript ?? session.originalTranscript}
           onPass={handleFinalQuizPass}
           onClose={handleFinalQuizClose}
           isRetry={finalQuizIsRetry}
