@@ -24,10 +24,16 @@ interface QuizPopupProps {
   totalBreakpoints: number;
   targetLocale: string;
   contextTranscript?: TranscriptSegment[];
-  onPass: () => void;
-  onClose: () => void;
+  onPass: (result: QuizResult) => void;
+  onClose: (result?: QuizResult) => void;
   isRetry: boolean;
   isFinalQuiz?: boolean;
+}
+
+export interface QuizResult {
+  correct: number;
+  total: number;
+  passed: boolean;
 }
 
 // Internal per-question answer state
@@ -393,6 +399,7 @@ function QuizPopupInner({
   );
   const [phase, setPhase] = useState<Phase>("answering");
   const [scoreCount, setScoreCount] = useState<{ correct: number; total: number } | null>(null);
+  const [lastResult, setLastResult] = useState<QuizResult | null>(null);
   const [isCheckingAnswer, setIsCheckingAnswer] = useState(false);
   const [voiceStage, setVoiceStage] = useState<"idle" | "recording" | "transcribing" | "grading">("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -668,7 +675,13 @@ function QuizPopupInner({
 
   const handleNext = useCallback(() => {
     if (currentQuestion?.type === "voice") {
-      onPass();
+      const result = {
+        correct: currentAnswer?.isCorrect === false ? 0 : 1,
+        total: 1,
+        passed: currentAnswer?.isCorrect !== false,
+      };
+      setLastResult(result);
+      onPass(result);
       return;
     }
     const isLast = currentIndex === questions.length - 1;
@@ -680,18 +693,20 @@ function QuizPopupInner({
       );
       const correctCount = updatedAnswers.filter((a) => a.isCorrect === true).length;
       const total = updatedAnswers.length;
-      setScoreCount({ correct: correctCount, total });
       const passed = isFinalQuiz ? true : correctCount >= getRequiredCorrect(total, isFinalQuiz);
+      const result = { correct: correctCount, total, passed };
+      setScoreCount({ correct: correctCount, total });
+      setLastResult(result);
       setPhase(passed ? "passed" : "failed");
       if (passed) {
         // Slight delay so the "passed" animation has a moment to render
-        setTimeout(() => onPass(), 1800);
+        setTimeout(() => onPass(result), 1800);
       }
     } else {
       setCurrentIndex((prev) => prev + 1);
       setPhase("answering");
     }
-  }, [answers, currentIndex, currentQuestion, isFinalQuiz, onPass, questions.length]);
+  }, [answers, currentAnswer?.isCorrect, currentIndex, currentQuestion, isFinalQuiz, onPass, questions.length]);
 
   const handleTryAgain = useCallback(() => {
     if (currentQuestion?.type === "voice") {
@@ -714,8 +729,16 @@ function QuizPopupInner({
       resetVoiceCapture();
       return;
     }
-    onClose(); // Parent will re-open with isRetry=true
-  }, [currentIndex, currentQuestion?.type, onClose, resetVoiceCapture]);
+    onClose(lastResult ?? (scoreCount ? { ...scoreCount, passed: false } : undefined)); // Parent will re-open with isRetry=true
+  }, [currentIndex, currentQuestion?.type, lastResult, onClose, resetVoiceCapture, scoreCount]);
+
+  const continueAfterPass = useCallback(() => {
+    onPass(lastResult ?? {
+      correct: scoreCount?.correct ?? questions.length,
+      total: scoreCount?.total ?? questions.length,
+      passed: true,
+    });
+  }, [lastResult, onPass, questions.length, scoreCount]);
 
   // ---------------------------------------------------------------------------
   // Render helpers
@@ -860,7 +883,7 @@ function QuizPopupInner({
             <button
               ref={firstFocusRef}
               type="button"
-              onClick={onClose}
+              onClick={() => onClose()}
               className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-slate-300 hover:text-slate-100 hover:bg-white/10 transition-colors duration-150"
               aria-label="Close quiz"
             >
@@ -1269,7 +1292,7 @@ function QuizPopupInner({
                 </button>
                 <button
                   type="button"
-                  onClick={onPass}
+                  onClick={handleNext}
                   className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200"
                   style={{
                     background: "linear-gradient(135deg, var(--success) 0%, #00d4a8 100%)",
@@ -1285,7 +1308,7 @@ function QuizPopupInner({
             {phase === "passed" && (
               <button
                 type="button"
-                onClick={onPass}
+                onClick={continueAfterPass}
                 className="flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white transition-all duration-200"
                 style={{
                   background:
@@ -1302,7 +1325,7 @@ function QuizPopupInner({
               <>
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={() => onClose()}
                   className="rounded-xl border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-200 hover:text-white hover:border-slate-400 transition-colors duration-150"
                 >
                   {t("quiz.close")}

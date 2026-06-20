@@ -98,6 +98,7 @@ interface VideoPlayerProps {
   onProgressUpdate: (seconds: number) => void;
   originalSubtitles?: TranscriptSegment[];
   sourceLocale?: string;
+  onPlay?: () => void;
   onEnd?: () => void;
 }
 
@@ -116,6 +117,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
   onProgressUpdate,
   originalSubtitles,
   sourceLocale,
+  onPlay,
   onEnd,
 }, ref) {
   const { t } = useTranslation();
@@ -321,7 +323,10 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
           onReady={onPlayerReady}
           onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
           onTimeUpdate={(event) => checkForBreakpoint(event.currentTarget.currentTime)}
-          onPlay={() => setPlaying(true)}
+          onPlay={() => {
+            setPlaying(true);
+            onPlay?.();
+          }}
           onPause={() => setPlaying(false)}
           onEnded={() => { setPlaying(false); onEnd?.(); }}
           /* Playback time events are used to trigger checkpoint pauses reliably. */

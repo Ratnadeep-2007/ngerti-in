@@ -95,6 +95,65 @@ export type LearningMode = "jolly" | "focus";
 
 export type SessionStatus = "pending" | "ongoing" | "completed";
 
+export interface FocusMetricSample {
+  timestampMs: number;
+  faceDetected: boolean;
+  headX: number;
+  headY: number;
+  headZ: number;
+  eyeFocus: number;
+  postureShift: number;
+}
+
+export interface FocusEvaluation {
+  startedAt: string;
+  endedAt?: string;
+  permission: "granted" | "denied" | "unavailable";
+  sampleCount: number;
+  facePresenceRatio: number;
+  focusScore: number;
+  calmnessScore: number;
+  postureScore: number;
+  fidgetingVariance: number;
+  gazeWanderingRatio: number;
+  bodyMovementVariance: number;
+}
+
+export interface QuizPerformanceScore {
+  breakpointIndex: number;
+  topic: string;
+  correct: number;
+  total: number;
+  passed: boolean;
+  completedAt: string;
+}
+
+export interface RecapChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+}
+
+export interface YouTubeRecommendation {
+  videoId: string;
+  title: string;
+  channelTitle: string;
+  thumbnailUrl: string;
+  url: string;
+  conceptTags: string[];
+  reason: string;
+}
+
+export interface SessionRecap {
+  summaryMarkdown?: string;
+  nextSteps?: string[];
+  recommendations?: YouTubeRecommendation[];
+  recommendationsError?: string;
+  chatMessages: RecapChatMessage[];
+  generatedAt?: string;
+}
+
 export interface CompanionCharacter {
   id: string;
   name: string;
@@ -122,6 +181,8 @@ export interface Session {
   createdAt: string;
   completedAt?: string;
   userName: string;
+  focusEvaluation?: FocusEvaluation;
+  recap?: SessionRecap;
   rawTranscript?: TranscriptSegment[];       // full transcript for lazy prefetch calls
   quizzesGeneratedUpTo?: number;              // high-water mark (seconds)
   finalQuiz?: Breakpoint | null;             // undefined = not generated, null = no questions
@@ -133,6 +194,7 @@ export interface SessionProgress {
   currentBreakpointIndex: number;
   lastPlaybackPosition: number;
   finalQuizPassed?: boolean;
+  quizScores?: QuizPerformanceScore[];
 }
 
 export interface ExtractTranscriptResponse {

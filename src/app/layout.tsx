@@ -5,6 +5,7 @@ import { ThemeProvider } from "../components/ThemeProvider";
 import { UILanguageProvider } from "../contexts/UILanguageContext";
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Lumina.ai — Active Validation Sandbox",
@@ -27,6 +28,7 @@ export default function RootLayout({
               {children}
             </main>
             <Footer />
+            <Toaster richColors position="top-right" />
           </UILanguageProvider>
         </ThemeProvider>
       </body>

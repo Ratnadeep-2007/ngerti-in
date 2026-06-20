@@ -7,6 +7,7 @@ import { getLanguageName } from "@/lib/languages";
 import { getCompanion } from "@/lib/companions";
 import type { Session } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
+import RecapDashboard from "@/components/recap/RecapDashboard";
 
 // ---- Date formatter ----
 
@@ -336,7 +337,7 @@ export default function CertificatePage({ params }: PageProps) {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
-      <main className="relative z-10 mx-auto max-w-4xl px-4 pb-20 pt-24 sm:px-6">
+      <main className="relative z-10 mx-auto max-w-5xl px-4 pb-20 pt-24 sm:px-6">
         {/* Header */}
         <div className="mb-10 animate-fade-in text-center flex flex-col items-center">
           <Link
@@ -375,6 +376,8 @@ export default function CertificatePage({ params }: PageProps) {
         <p className="mt-12 text-center text-lg text-[var(--muted)] pixel-text border-t-4 border-dashed border-[var(--border)] pt-8">
           {t("certificate.shareOrDownload")}
         </p>
+
+        <RecapDashboard session={session} onSessionUpdate={setSession} />
       </main>
     </div>
   );

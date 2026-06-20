@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
 import VideoPlayer, { type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
-import QuizPopup from "@/components/quiz/QuizPopup";
+import QuizPopup, { type QuizResult } from "@/components/quiz/QuizPopup";
 import CursorFollower from "@/components/companion/CursorFollower";
 import SpeechBubble from "@/components/companion/SpeechBubble";
 
@@ -13,7 +13,8 @@ import { getSession, updateProgress, updateSession, saveFinalQuiz, markFinalQuiz
 import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
 import { getQuizPlan } from "@/lib/quiz-planner";
-import type { Session, TranslatedContent, Breakpoint } from "@/lib/types";
+import { useFocusTracker } from "@/lib/use-focus-tracker";
+import type { Session, TranslatedContent, Breakpoint, QuizPerformanceScore } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -96,6 +97,16 @@ function resizeNumberArray(values: number[], targetLength: number): number[] {
   return Array.from({ length: targetLength }, (_, index) => values[index] ?? 0);
 }
 
+function upsertQuizScore(
+  scores: QuizPerformanceScore[] | undefined,
+  nextScore: QuizPerformanceScore
+): QuizPerformanceScore[] {
+  return [
+    ...(scores ?? []).filter((score) => score.breakpointIndex !== nextScore.breakpointIndex),
+    nextScore,
+  ].sort((a, b) => a.breakpointIndex - b.breakpointIndex);
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LearnSessionPage() {
@@ -103,6 +114,7 @@ export default function LearnSessionPage() {
   const router = useRouter();
   const sessionId = typeof params.sessionId === "string" ? params.sessionId : "";
   const { t } = useTranslation();
+  const { start: startFocusTracking, stopAndEvaluate: stopFocusTracking } = useFocusTracker();
 
   // ── Session state ─────────────────────────────────────────────────────────
   const [session, setSession] = useState<Session | null>(null);
@@ -414,7 +426,7 @@ export default function LearnSessionPage() {
 
   // ── Quiz callbacks ────────────────────────────────────────────────────────
 
-  const handleQuizPass = useCallback(() => {
+  const handleQuizPass = useCallback((result: QuizResult) => {
     if (!session || activeBreakpointIndex === null) return;
 
     // Update progress: mark this breakpoint as cleared, advance index
@@ -431,6 +443,14 @@ export default function LearnSessionPage() {
       breakpointsCleared: newCleared,
       attemptsPerBreakpoint: newAttempts,
       currentBreakpointIndex: nextIndex,
+      quizScores: upsertQuizScore(session.progress.quizScores, {
+        breakpointIndex: activeBreakpointIndex,
+        topic: session.translatedContent.breakpoints[activeBreakpointIndex]?.topic ?? "Checkpoint",
+        correct: result.correct,
+        total: result.total,
+        passed: result.passed,
+        completedAt: new Date().toISOString(),
+      }),
     });
 
     // Close popup
@@ -467,10 +487,23 @@ export default function LearnSessionPage() {
         triggerCompanionState("celebration", text, 2500);
       }
     }
-  }, [session, activeBreakpointIndex, saveProgress, triggerCompanionState, generateFinalQuizInBackground]);
+  }, [session, activeBreakpointIndex, saveProgress, triggerCompanionState, generateFinalQuizInBackground, t]);
 
-  const handleQuizClose = useCallback(() => {
+  const handleQuizClose = useCallback((result?: QuizResult) => {
     if (!session) return;
+
+    if (result && activeBreakpointIndex !== null) {
+      saveProgress({
+        quizScores: upsertQuizScore(session.progress.quizScores, {
+          breakpointIndex: activeBreakpointIndex,
+          topic: session.translatedContent.breakpoints[activeBreakpointIndex]?.topic ?? "Checkpoint",
+          correct: result.correct,
+          total: result.total,
+          passed: result.passed,
+          completedAt: new Date().toISOString(),
+        }),
+      });
+    }
 
     if (!isRetry) {
       // First fail: mark attempt, give one retry
@@ -631,17 +664,34 @@ export default function LearnSessionPage() {
     }
   }, [session, handleVideoEnd]);
 
-  const handleFinalQuizPass = useCallback(() => {
+  const handleFinalQuizPass = useCallback((result: QuizResult) => {
     if (!session) return;
     setFinalQuizVisible(false);
     setFinalQuizIsRetry(false);
-    const updated = markFinalQuizPassed(session.id);
-    if (updated) setSession(updated);
+    const focusEvaluation = stopFocusTracking();
+    const completed = markFinalQuizPassed(session.id);
+    if (completed) {
+      const updated = updateSession(session.id, {
+        progress: {
+          ...completed.progress,
+          quizScores: upsertQuizScore(completed.progress.quizScores, {
+            breakpointIndex: -1,
+            topic: "Final Quiz",
+            correct: result.correct,
+            total: result.total,
+            passed: result.passed,
+            completedAt: new Date().toISOString(),
+          }),
+        },
+        focusEvaluation,
+      });
+      setSession(updated ?? completed);
+    }
     if (session.mode === "jolly") {
       const dialogue = session.translatedContent.companionDialogue;
       triggerCompanionState("celebration", dialogue.videoComplete || t("learn.companionCertReady"), 3000);
     }
-  }, [session, triggerCompanionState]);
+  }, [session, stopFocusTracking, triggerCompanionState, t]);
 
   const handleFinalQuizClose = useCallback(() => {
     if (!finalQuizIsRetry) {
@@ -884,6 +934,7 @@ export default function LearnSessionPage() {
               onProgressUpdate={handleProgressUpdate}
               originalSubtitles={session.originalTranscript}
               sourceLocale={session.sourceLocale}
+              onPlay={() => void startFocusTracking()}
               onEnd={handleVideoEnd}
             />
           </section>
