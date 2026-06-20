@@ -1,5 +1,12 @@
 # OpenFace 2.2.0: a facial behavior analysis toolkit
 
+### Quick Start (40 FPS Optimized for Gaze & Head Pose)
+To run the tracker at 40 FPS without extracting Action Units, use the following command:
+```bash
+cd "/Users/rachitkothadia/Downloads/Face Movement/OpenFace"
+./build/bin/FaceLandmarkVid -device 0 -mloc "model/main_clnf_general.txt" -noAUs
+```
+
 [![Build Status](https://travis-ci.org/TadasBaltrusaitis/OpenFace.svg?branch=master)](https://travis-ci.org/TadasBaltrusaitis/OpenFace)
 [![Build status](https://ci.appveyor.com/api/projects/status/8msiklxfbhlnsmxp/branch/master?svg=true)](https://ci.appveyor.com/project/TadasBaltrusaitis/openface/branch/master)
 
