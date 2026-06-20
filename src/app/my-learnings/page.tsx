@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "@/contexts/UILanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { getLeaderboardData, LeaderboardEntry } from "@/lib/leaderboard";
+import { LeaderboardEntry } from "@/lib/leaderboard";
 import type { Session } from "@/lib/types";
 
 interface MeetingInvite {
@@ -42,28 +42,41 @@ export default function MyLearningsPage() {
     setLoading(false);
   };
 
-  const loadMeetings = () => {
-    const saved = localStorage.getItem("lumina_meetings");
-    if (saved) {
-      try {
-        setMeetings(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse meetings", e);
-      }
-    }
+  const fetchMeetings = () => {
+    fetch("/api/meetings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.meetings) {
+          setMeetings(data.meetings);
+        }
+      })
+      .catch((err) => console.error("Error fetching meetings", err));
+  };
+
+  const fetchLeaderboard = () => {
+    fetch("/api/leaderboard")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.leaderboard) {
+          setLeaderboard(data.leaderboard);
+        }
+      })
+      .catch((err) => console.error("Error fetching leaderboard", err));
   };
 
   useEffect(() => {
     loadSessions();
-    loadMeetings();
+    fetchMeetings();
+    fetchLeaderboard();
 
-    // Listen to changes in other tabs
-    const checkStorage = () => {
-      loadSessions();
-      loadMeetings();
+    // Polling intervals to sync with other laptops/devices on the network
+    const meetingsInterval = setInterval(fetchMeetings, 3000);
+    const leaderboardInterval = setInterval(fetchLeaderboard, 5000);
+
+    return () => {
+      clearInterval(meetingsInterval);
+      clearInterval(leaderboardInterval);
     };
-    window.addEventListener("storage", checkStorage);
-    return () => window.removeEventListener("storage", checkStorage);
   }, []);
 
   // Compute stats
@@ -85,14 +98,25 @@ export default function MyLearningsPage() {
 
   const combinedScore = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
 
-  // Load and update leaderboard dynamically based on sessions and score
+  // Post student score to network leaderboard when calculated
   useEffect(() => {
-    if (user) {
-      const data = getLeaderboardData({ username: user.username, score: combinedScore });
-      setLeaderboard(data);
-    } else {
-      const data = getLeaderboardData();
-      setLeaderboard(data);
+    if (user && user.role) {
+      fetch("/api/leaderboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          role: user.role,
+          score: combinedScore,
+        }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.leaderboard) {
+            setLeaderboard(data.leaderboard);
+          }
+        })
+        .catch((err) => console.error("Error posting score to leaderboard", err));
     }
   }, [user, combinedScore]);
 

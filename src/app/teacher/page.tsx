@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useFocusTracker } from "@/lib/use-focus-tracker";
 import { toast } from "sonner";
-import { getLeaderboardData, LeaderboardEntry } from "@/lib/leaderboard";
+import { LeaderboardEntry } from "@/lib/leaderboard";
 
 interface MeetingInvite {
   id: string;
@@ -30,21 +30,43 @@ export default function TeacherDashboard() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  const fetchMeetings = useCallback(() => {
+    fetch("/api/meetings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.meetings) {
+          setMeetings(data.meetings);
+        }
+      })
+      .catch((err) => console.error("Error fetching meetings", err));
+  }, []);
+
+  const fetchLeaderboard = useCallback(() => {
+    fetch("/api/leaderboard")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.leaderboard) {
+          setLeaderboard(data.leaderboard);
+        }
+      })
+      .catch((err) => console.error("Error fetching leaderboard", err));
+  }, []);
+
   // Ensure client side execution
   useEffect(() => {
     setIsClient(true);
-    // Load existing meetings
-    const saved = localStorage.getItem("lumina_meetings");
-    if (saved) {
-      try {
-        setMeetings(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    // Load leaderboard
-    setLeaderboard(getLeaderboardData());
-  }, []);
+    fetchMeetings();
+    fetchLeaderboard();
+
+    // Polling interval to keep dashboard synced with other laptops
+    const meetingsInterval = setInterval(fetchMeetings, 3000);
+    const leaderboardInterval = setInterval(fetchLeaderboard, 5000);
+
+    return () => {
+      clearInterval(meetingsInterval);
+      clearInterval(leaderboardInterval);
+    };
+  }, [fetchMeetings, fetchLeaderboard]);
 
   // Web camera streaming to visual element
   useEffect(() => {
@@ -120,48 +142,55 @@ export default function TeacherDashboard() {
     }
 
     const meetingId = `zoom_${Math.random().toString(36).substring(2, 10)}`;
-    const newMeeting: MeetingInvite = {
+    const payload = {
+      action: "create",
       id: meetingId,
       topic: topic.trim(),
       host: "Ratnadeep (Teacher)",
-      createdAt: new Date().toISOString(),
-      active: true,
     };
 
-    const updated = [newMeeting, ...meetings].slice(0, 10);
-    setMeetings(updated);
-    localStorage.setItem("lumina_meetings", JSON.stringify(updated));
-    
-    // Broadcast active meeting via localStorage for open tabs
-    localStorage.setItem("lumina_active_meeting_invite", JSON.stringify(newMeeting));
-
-    toast.success(`Meeting "${topic}" created!`);
-    setTopic("");
-
-    // Join the meeting instantly
-    router.push(`/zoom/${meetingId}?role=teacher`);
+    fetch("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          toast.success(`Meeting "${topic}" created!`);
+          setTopic("");
+          fetchMeetings();
+          // Join the meeting instantly
+          router.push(`/zoom/${meetingId}?role=teacher`);
+        } else {
+          toast.error("Failed to create meeting on server");
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error("Error connecting to server");
+      });
   };
 
   const handleEndMeeting = (id: string) => {
-    const updated = meetings.map(m => m.id === id ? { ...m, active: false } : m);
-    setMeetings(updated);
-    localStorage.setItem("lumina_meetings", JSON.stringify(updated));
-
-    // Clear active broadcast if this was it
-    const activeBroadcast = localStorage.getItem("lumina_active_meeting_invite");
-    if (activeBroadcast) {
-      try {
-        const parsed = JSON.parse(activeBroadcast);
-        if (parsed.id === id) {
-          localStorage.removeItem("lumina_active_meeting_invite");
-          // Trigger storage change manually for own tab
-          window.dispatchEvent(new Event("storage"));
+    fetch("/api/meetings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "deactivate", id }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          toast.info("Meeting deactivated");
+          fetchMeetings();
+        } else {
+          toast.error("Failed to end meeting");
         }
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    toast.info("Meeting deactivated");
+      })
+      .catch((err) => {
+        console.error(err);
+        toast.error("Error ending meeting");
+      });
   };
 
   if (!isClient) return null;

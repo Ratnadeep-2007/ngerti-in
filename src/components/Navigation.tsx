@@ -21,32 +21,30 @@ export default function Navigation() {
 
   const checkInvite = useCallback(() => {
     if (typeof window === "undefined") return;
-    const inviteStr = localStorage.getItem("lumina_active_meeting_invite");
-    if (inviteStr) {
-      try {
-        const parsed = JSON.parse(inviteStr);
-        // Only show if it's active and not already in this room
-        if (parsed && parsed.active && !pathname.includes(`/zoom/${parsed.id}`)) {
-          setMeetingInvite(parsed);
-          return;
+    fetch("/api/meetings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.activeInvite) {
+          const invite = data.activeInvite;
+          // Check if user has declined this meeting on this browser/laptop
+          const isDeclined = localStorage.getItem(`lumina_declined_invite_${invite.id}`) === "true";
+          if (!isDeclined && !pathname.includes(`/zoom/${invite.id}`)) {
+            setMeetingInvite(invite);
+            return;
+          }
         }
-      } catch {
-        // ignore
-      }
-    }
-    setMeetingInvite(null);
+        setMeetingInvite(null);
+      })
+      .catch((err) => console.error("Error checking meetings", err));
   }, [pathname]);
 
   useEffect(() => {
     checkInvite();
 
-    // Listen to changes in other tabs
-    window.addEventListener("storage", checkInvite);
-    // Polling fallback
+    // Polling interval to check for new meetings shared from other laptops
     const interval = setInterval(checkInvite, 2000);
 
     return () => {
-      window.removeEventListener("storage", checkInvite);
       clearInterval(interval);
     };
   }, [checkInvite]);
@@ -59,11 +57,11 @@ export default function Navigation() {
   };
 
   const handleDeclineInvite = () => {
-    setMeetingInvite(null);
-    if (typeof window !== "undefined" && meetingInvite) {
-      localStorage.removeItem("lumina_active_meeting_invite");
-      window.dispatchEvent(new Event("storage"));
+    if (!meetingInvite) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`lumina_declined_invite_${meetingInvite.id}`, "true");
     }
+    setMeetingInvite(null);
   };
 
   const links = [
