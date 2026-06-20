@@ -124,7 +124,7 @@ export default function ZoomMeetingRoom() {
 
   // Handle local user distraction
   useEffect(() => {
-    if (isDistracted) {
+    if (isDistracted && role !== "teacher") {
       playBeep();
       setFocusLogs(prev => [
         { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), status: "Distracted" },
@@ -132,7 +132,7 @@ export default function ZoomMeetingRoom() {
       ].slice(0, 15));
       toast.error("⚠️ Attention required! Please focus on the call.");
     }
-  }, [isDistracted, playBeep]);
+  }, [isDistracted, playBeep, role]);
 
   // Peer simulated distraction cycles (makes the demo feel incredibly active & real-world)
   useEffect(() => {
@@ -268,14 +268,14 @@ export default function ZoomMeetingRoom() {
             )}
 
             {/* Local Video Card */}
-            <div className={`aspect-video bg-[#1a1c22] pixel-border border-gray-800 rounded-xl relative overflow-hidden flex flex-col group ${isDistracted && isVideoOn ? "ring-4 ring-[var(--error)] animate-shake" : ""}`}>
+            <div className={`aspect-video bg-[#1a1c22] pixel-border border-gray-800 rounded-xl relative overflow-hidden flex flex-col group ${isDistracted && isVideoOn && role !== "teacher" ? "ring-4 ring-[var(--error)] animate-shake" : ""}`}>
               {isVideoOn ? (
                 <video
                   ref={localVideoRef}
                   autoPlay
                   playsInline
                   muted
-                  className={`w-full h-full object-cover transform -scale-x-100 ${isDistracted ? "brightness-50" : ""}`}
+                  className={`w-full h-full object-cover transform -scale-x-100 ${isDistracted && role !== "teacher" ? "brightness-50" : ""}`}
                 />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
@@ -287,7 +287,7 @@ export default function ZoomMeetingRoom() {
               )}
 
               {/* Warning Overlay */}
-              {isDistracted && isVideoOn && (
+              {isDistracted && isVideoOn && role !== "teacher" && (
                 <div className="absolute inset-0 bg-red-600/40 flex flex-col items-center justify-center text-center p-4 animate-pulse">
                   <span className="text-4xl mb-1">⚠️</span>
                   <span className="text-white font-black text-sm uppercase tracking-wider bg-black/80 px-2.5 py-1 pixel-border border-red-600">
@@ -365,26 +365,28 @@ export default function ZoomMeetingRoom() {
           <div className="space-y-5 flex-1 overflow-y-auto pr-1">
             
             {/* Local Focus Meter */}
-            <div className="bg-[#1e212b] border border-gray-800 p-4 pixel-border space-y-3">
-              <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider">
-                Your Focus Index
-              </span>
-              <div className="flex items-center gap-4">
-                <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-gray-700" style={{ borderColor: isDistracted ? "var(--error)" : "var(--success)" }}>
-                  <span className="font-black text-sm text-gray-200">
-                    {isVideoOn ? `${focusScorePercent}%` : "--"}
-                  </span>
-                </div>
-                <div className="flex-1 space-y-1">
-                  <span className={`text-xs font-bold uppercase ${isDistracted ? "text-[var(--error)]" : "text-[var(--success)]"}`}>
-                    {isVideoOn ? (isDistracted ? "Looking Away" : "Focused") : "Camera Off"}
-                  </span>
-                  <p className="text-[10px] text-gray-400 font-medium">
-                    Eye alignment offset relative to screen center.
-                  </p>
+            {role !== "teacher" && (
+              <div className="bg-[#1e212b] border border-gray-800 p-4 pixel-border space-y-3">
+                <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider">
+                  Your Focus Index
+                </span>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-gray-700" style={{ borderColor: isDistracted ? "var(--error)" : "var(--success)" }}>
+                    <span className="font-black text-sm text-gray-200">
+                      {isVideoOn ? `${focusScorePercent}%` : "--"}
+                    </span>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <span className={`text-xs font-bold uppercase ${isDistracted ? "text-[var(--error)]" : "text-[var(--success)]"}`}>
+                      {isVideoOn ? (isDistracted ? "Looking Away" : "Focused") : "Camera Off"}
+                    </span>
+                    <p className="text-[10px] text-gray-400 font-medium">
+                      Eye alignment offset relative to screen center.
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Peer Focus Meter */}
             <div className="bg-[#1e212b] border border-gray-800 p-4 pixel-border space-y-3">
