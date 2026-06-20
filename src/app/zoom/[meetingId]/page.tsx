@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useFocusTracker } from "@/lib/use-focus-tracker";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 interface FocusLogEntry {
@@ -17,6 +18,12 @@ export default function ZoomMeetingRoom() {
 
   const meetingId = typeof params.meetingId === "string" ? params.meetingId : "";
   const role = searchParams.get("role") === "teacher" ? "teacher" : "student";
+  const { user } = useAuth();
+
+  // Derive the actual role from auth context (URL param is just a hint)
+  const isTeacher = user?.role === "teacher" || user?.role === "guest_teacher";
+  const effectiveRole = isTeacher ? "teacher" : role;
+  const displayName = user?.username ?? (effectiveRole === "teacher" ? "Teacher" : "Student");
 
   const [isClient, setIsClient] = useState(false);
   const [topic, setTopic] = useState("Zoom Call");
@@ -26,8 +33,7 @@ export default function ZoomMeetingRoom() {
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isSharingScreen, setIsSharingScreen] = useState(false);
   const [focusLogs, setFocusLogs] = useState<FocusLogEntry[]>([]);
-  const [peerDistracted, setPeerDistracted] = useState(false);
-  const [peerFocusScore, setPeerFocusScore] = useState(90);
+  const [remoteParticipants, setRemoteParticipants] = useState<any[]>([]);
 
   // Hook for distraction avoidance
   const { start, stopAndEvaluate, stream, isDistracted, latestSample } = useFocusTracker();
@@ -36,22 +42,135 @@ export default function ZoomMeetingRoom() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
 
+  // Fetch topic from API instead of localStorage so students get it too
   useEffect(() => {
     setIsClient(true);
-    // Find meeting details
-    const saved = localStorage.getItem("lumina_meetings");
-    if (saved) {
-      try {
-        const meetings = JSON.parse(saved);
-        const current = meetings.find((m: any) => m.id === meetingId);
-        if (current) {
-          setTopic(current.topic);
+    fetch("/api/meetings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.meetings) {
+          const current = data.meetings.find((m: any) => m.id === meetingId);
+          if (current) {
+            setTopic(current.topic);
+            return;
+          }
         }
-      } catch (e) {
-        console.error(e);
-      }
-    }
+        // Fallback to local storage
+        const saved = localStorage.getItem("lumina_meetings");
+        if (saved) {
+          try {
+            const mtgs = JSON.parse(saved);
+            const current = mtgs.find((m: any) => m.id === meetingId);
+            if (current) setTopic(current.topic);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching meetings list", err);
+      });
   }, [meetingId]);
+
+  // Guard: students must have accepted the invite — block direct URL access
+  useEffect(() => {
+    if (!isClient) return;
+    if (effectiveRole === "teacher") return; // teachers always allowed
+    const accepted = localStorage.getItem(`lumina_accepted_invite_${meetingId}`) === "true";
+    if (!accepted) {
+      toast.error("You must accept the meeting invitation to join.");
+      router.replace("/my-learnings");
+    }
+  }, [isClient, effectiveRole, meetingId, router]);
+
+  // Participant registry: Join on mount, Leave on unmount
+  useEffect(() => {
+    if (!isClient) return;
+
+    fetch("/api/meetings/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        meetingId,
+        username: displayName,
+        role: effectiveRole,
+        action: "join",
+      }),
+    }).catch((err) => console.error("Error joining participant list", err));
+
+    return () => {
+      fetch("/api/meetings/participants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          username: displayName,
+          role: effectiveRole,
+          action: "leave",
+        }),
+      }).catch((err) => console.error("Error leaving participant list", err));
+    };
+  }, [isClient, meetingId, displayName, effectiveRole]);
+
+  // Heartbeat & Poll participants
+  const focusScorePercent = isVideoOn ? Math.round((latestSample?.eyeFocus ?? 0) * 100) : 100;
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    const interval = setInterval(() => {
+      // Send Heartbeat
+      fetch("/api/meetings/participants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          meetingId,
+          username: displayName,
+          role: effectiveRole,
+          focusScore: focusScorePercent,
+          isDistracted: isDistracted && isVideoOn,
+          action: "heartbeat",
+        }),
+      }).catch((err) => console.error("Heartbeat error", err));
+
+      // Fetch participants list
+      fetch(`/api/meetings/participants?meetingId=${meetingId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.participants) {
+            const others = data.participants.filter(
+              (p: any) => p.username !== displayName
+            );
+            setRemoteParticipants(others);
+          }
+        })
+        .catch((err) => console.error("Error retrieving participant list", err));
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isClient, meetingId, displayName, effectiveRole, focusScorePercent, isDistracted, isVideoOn]);
+
+  // Distraction trigger logs for the teacher dashboard
+  const prevDistractedRef = useRef<{ [username: string]: boolean }>({});
+  useEffect(() => {
+    remoteParticipants.forEach((p) => {
+      const wasDistracted = !!prevDistractedRef.current[p.username];
+      const isNowDistracted = p.isDistracted;
+      if (isNowDistracted && !wasDistracted) {
+        if (effectiveRole === "teacher") {
+          const logTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setFocusLogs((prev) => [
+            { time: logTime, status: `${p.username} distracted` },
+            ...prev,
+          ].slice(0, 15));
+          toast.warning(`🔔 Student ${p.username} has looked away from the lecture.`, {
+            id: `distract-${p.username}-${Date.now()}`
+          });
+        }
+      }
+      prevDistractedRef.current[p.username] = isNowDistracted;
+    });
+  }, [remoteParticipants, effectiveRole]);
 
   // Bind camera stream
   useEffect(() => {
@@ -134,34 +253,6 @@ export default function ZoomMeetingRoom() {
     }
   }, [isDistracted, playBeep]);
 
-  // Peer simulated distraction cycles (makes the demo feel incredibly active & real-world)
-  useEffect(() => {
-    if (!isClient) return;
-
-    const interval = setInterval(() => {
-      // Randomly trigger peer looking away (25% chance every 8 seconds)
-      const roll = Math.random();
-      if (roll < 0.25) {
-        setPeerDistracted(true);
-        setPeerFocusScore(Math.floor(Math.random() * 30) + 10);
-        
-        // Log it if you are teacher viewing the student
-        if (role === "teacher") {
-          setFocusLogs(prev => [
-            { time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), status: "Student distracted" },
-            ...prev
-          ].slice(0, 15));
-          toast.warning("🔔 Student has looked away from the lecture.");
-        }
-      } else {
-        setPeerDistracted(false);
-        setPeerFocusScore(Math.floor(Math.random() * 10) + 88);
-      }
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [isClient, role]);
-
   // Handle screen share
   const handleToggleScreenShare = async () => {
     if (isSharingScreen) {
@@ -205,16 +296,22 @@ export default function ZoomMeetingRoom() {
     if (role === "teacher") {
       router.push("/teacher");
     } else {
+      // Clear accepted flag when leaving so they'd need a new invite to re-join
+      localStorage.removeItem(`lumina_accepted_invite_${meetingId}`);
       router.push("/my-learnings");
     }
   };
 
   if (!isClient) return null;
 
-  // Compute live focus percentages
+  // Compute values for rendering
   const faceDetected = latestSample?.faceDetected ?? false;
-  const eyeFocus = latestSample?.eyeFocus ?? 0;
-  const focusScorePercent = Math.round(eyeFocus * 100);
+  const isTeacherPresent = remoteParticipants.some(
+    (p) => p.role === "teacher" || p.role === "guest_teacher"
+  );
+  const remoteStudents = remoteParticipants.filter(
+    (p) => p.role !== "teacher" && p.role !== "guest_teacher"
+  );
 
   return (
     <div className="fixed inset-0 bg-[#0e0f11] text-white z-50 flex flex-col font-sans select-none pt-0">
@@ -236,7 +333,7 @@ export default function ZoomMeetingRoom() {
             ID: {meetingId.split("_")[1] || meetingId}
           </span>
           <span className="text-xs font-bold px-2 py-1 pixel-border text-white bg-[var(--primary)] uppercase">
-            {role === "teacher" ? "Host (Teacher)" : "Participant"}
+            {effectiveRole === "teacher" ? `Host · ${displayName}` : `Participant · ${displayName}`}
           </span>
         </div>
       </header>
@@ -280,7 +377,7 @@ export default function ZoomMeetingRoom() {
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
                   <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-2xl font-bold mb-2">
-                    {role === "teacher" ? "👨‍🏫" : "🎓"}
+                    {effectiveRole === "teacher" ? "👨‍🏫" : "🎓"}
                   </div>
                   <span className="text-gray-400 font-bold text-sm">Camera Off</span>
                 </div>
@@ -307,44 +404,76 @@ export default function ZoomMeetingRoom() {
               {/* Label */}
               <div className="absolute bottom-3 left-3 bg-black/75 px-3 py-1 rounded text-xs font-bold flex items-center gap-2 border border-gray-800">
                 <span className={`w-2 h-2 rounded-full ${faceDetected && isVideoOn ? "bg-green-500" : "bg-red-500"}`} />
-                You ({role === "teacher" ? "Teacher" : "Student"})
+                {displayName} (You)
               </div>
             </div>
 
-            {/* Peer Video Card */}
-            <div className={`aspect-video bg-[#1a1c22] pixel-border border-gray-800 rounded-xl relative overflow-hidden flex flex-col group ${peerDistracted ? "ring-4 ring-orange-500 animate-pulse" : ""}`}>
-              {/* Simulated camera feed */}
-              <div className="flex-1 bg-[#101216] flex flex-col items-center justify-center relative">
-                {peerDistracted ? (
-                  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-4">
-                    <div className="w-16 h-16 rounded-full bg-orange-950 flex items-center justify-center text-3xl border border-orange-700 animate-bounce mb-2">
-                      ⚠️
-                    </div>
-                    <span className="text-orange-500 font-extrabold text-sm uppercase tracking-wider">
-                      Distracted / Looking Away
-                    </span>
+            {/* Remote Participant Cards */}
+            {remoteParticipants.map((p) => {
+              const isParticipantTeacher = p.role === "teacher" || p.role === "guest_teacher";
+              return (
+                <div
+                  key={p.username}
+                  className={`aspect-video bg-[#1a1c22] pixel-border border-gray-800 rounded-xl relative overflow-hidden flex flex-col group ${p.isDistracted ? "ring-4 ring-orange-500 animate-pulse" : ""}`}
+                >
+                  <div className="flex-1 bg-[#101216] flex flex-col items-center justify-center relative">
+                    {p.isDistracted ? (
+                      <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-4">
+                        <div className="w-16 h-16 rounded-full bg-orange-950 flex items-center justify-center text-3xl border border-orange-700 animate-bounce mb-2">
+                          ⚠️
+                        </div>
+                        <span className="text-orange-500 font-extrabold text-sm uppercase tracking-wider">
+                          Distracted / Looking Away
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center p-4">
+                        <div className="w-20 h-20 rounded-full bg-gray-800 border-2 border-[var(--primary)] flex items-center justify-center text-3xl mb-3 shadow-[0_0_15px_rgba(108,92,231,0.3)]">
+                          {isParticipantTeacher ? "👨‍🏫" : "🎓"}
+                        </div>
+                        <span className="font-bold text-base text-gray-200">
+                          {p.username}
+                        </span>
+                        <span className="text-xs text-green-400 font-semibold mt-1 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Active Focus ({p.focusScore}%)
+                        </span>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-center p-4">
-                    <div className="w-20 h-20 rounded-full bg-gray-800 border-2 border-[var(--primary)] flex items-center justify-center text-3xl mb-3 shadow-[0_0_15px_rgba(108,92,231,0.3)]">
-                      {role === "teacher" ? "🎓" : "👨‍🏫"}
-                    </div>
-                    <span className="font-bold text-base text-gray-200">
-                      {role === "teacher" ? "Student Participant" : "Teacher Ratnadeep"}
-                    </span>
-                    <span className="text-xs text-green-400 font-semibold mt-1 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Active Focus
-                    </span>
-                  </div>
-                )}
-              </div>
 
-              {/* Label */}
-              <div className="absolute bottom-3 left-3 bg-black/75 px-3 py-1 rounded text-xs font-bold flex items-center gap-2 border border-gray-800">
-                <span className={`w-2 h-2 rounded-full ${peerDistracted ? "bg-orange-500" : "bg-green-500"}`} />
-                {role === "teacher" ? "Student" : "Ratnadeep (Teacher)"}
+                  {/* Label */}
+                  <div className="absolute bottom-3 left-3 bg-black/75 px-3 py-1 rounded text-xs font-bold flex items-center gap-2 border border-gray-800">
+                    <span className={`w-2 h-2 rounded-full ${p.isDistracted ? "bg-orange-500" : "bg-green-500"}`} />
+                    {p.username} ({isParticipantTeacher ? "Teacher" : "Student"})
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Waiting Placeholders */}
+            {effectiveRole === "teacher" && remoteStudents.length === 0 && (
+              <div className="aspect-video bg-[#13151b] border-2 border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center text-center p-6 animate-pulse">
+                <span className="text-4xl mb-3">🔔</span>
+                <h4 className="text-gray-400 font-bold text-sm uppercase tracking-wider">
+                  Waiting for students to join...
+                </h4>
+                <p className="text-gray-600 text-xs mt-1 max-w-xs">
+                  Students will appear here once they accept the invitation banner.
+                </p>
               </div>
-            </div>
+            )}
+
+            {effectiveRole !== "teacher" && !isTeacherPresent && (
+              <div className="aspect-video bg-[#13151b] border-2 border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center text-center p-6 animate-pulse">
+                <span className="text-4xl mb-3">👨‍🏫</span>
+                <h4 className="text-gray-400 font-bold text-sm uppercase tracking-wider">
+                  Waiting for the teacher...
+                </h4>
+                <p className="text-gray-600 text-xs mt-1 max-w-xs">
+                  The session will begin as soon as the teacher connects.
+                </p>
+              </div>
+            )}
 
           </div>
 
@@ -386,27 +515,57 @@ export default function ZoomMeetingRoom() {
               </div>
             </div>
 
-            {/* Peer Focus Meter */}
-            <div className="bg-[#1e212b] border border-gray-800 p-4 pixel-border space-y-3">
-              <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider">
-                Peer Focus Index
-              </span>
-              <div className="flex items-center gap-4">
-                <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-gray-700" style={{ borderColor: peerDistracted ? "var(--warning)" : "var(--success)" }}>
-                  <span className="font-black text-sm text-gray-200">
-                    {peerFocusScore}%
-                  </span>
-                </div>
-                <div className="flex-1 space-y-1">
-                  <span className={`text-xs font-bold uppercase ${peerDistracted ? "text-orange-500" : "text-[var(--success)]"}`}>
-                    {peerDistracted ? "Distracted" : "Focused"}
-                  </span>
-                  <p className="text-[10px] text-gray-400 font-medium font-sans">
-                    Attention scoring calculated on remote peer.
-                  </p>
+            {/* Class/Teacher Focus Section */}
+            {effectiveRole === "teacher" ? (
+              <div className="space-y-4">
+                <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider">
+                  Class Focus Dashboard
+                </span>
+                {remoteStudents.length === 0 ? (
+                  <div className="text-gray-500 italic text-[11px] text-center py-4 bg-[#1e212b] border border-gray-800 rounded">
+                    No students currently in call.
+                  </div>
+                ) : (
+                  remoteStudents.map((s) => (
+                    <div key={s.username} className="bg-[#1e212b] border border-gray-800 p-3 pixel-border space-y-2">
+                      <div className="flex justify-between text-xs font-bold text-gray-200">
+                        <span>🎓 {s.username}</span>
+                        <span className={s.isDistracted ? "text-orange-500" : "text-green-500"}>
+                          {s.focusScore}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-gray-800 rounded overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${s.isDistracted ? "bg-orange-500" : "bg-green-500"}`}
+                          style={{ width: `${s.focusScore}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="bg-[#1e212b] border border-gray-800 p-4 pixel-border space-y-3">
+                <span className="text-xs font-bold text-gray-400 block uppercase tracking-wider">
+                  Teacher Status
+                </span>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-gray-700" style={{ borderColor: isTeacherPresent ? "var(--success)" : "var(--muted)" }}>
+                    <span className="font-black text-xs text-gray-200">
+                      {isTeacherPresent ? "ON" : "OFF"}
+                    </span>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <span className={`text-xs font-bold uppercase ${isTeacherPresent ? "text-[var(--success)]" : "text-gray-400"}`}>
+                      {isTeacherPresent ? "Teacher Connected" : "Teacher Offline"}
+                    </span>
+                    <p className="text-[10px] text-gray-400 font-medium font-sans">
+                      {isTeacherPresent ? "Teacher is actively hosting the lesson." : "Waiting for the teacher to start."}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Warnings Event Log */}
             <div className="space-y-2">
@@ -479,7 +638,7 @@ export default function ZoomMeetingRoom() {
             onClick={handleLeaveCall}
             className="bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs px-6 py-3 rounded-lg border border-red-700 hover:scale-105 transition-transform"
           >
-            {role === "teacher" ? "End Meeting" : "Leave Meeting"}
+            {effectiveRole === "teacher" ? "End Meeting" : "Leave Meeting"}
           </button>
         </div>
 

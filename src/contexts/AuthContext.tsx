@@ -65,82 +65,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, loading, pathname, router]);
 
   const login = async (email: string, role: UserRole): Promise<boolean> => {
-    // Mock authentication registry lookup
     if (typeof window === "undefined") return false;
-    const registeredStr = localStorage.getItem("lumina_registered_users");
-    let users = [];
-    if (registeredStr) {
-      try {
-        users = JSON.parse(registeredStr);
-      } catch {
-        // ignore
-      }
-    }
 
-    const found = users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
-    if (!found) {
-      toast.error("Email not registered. Please sign up first.");
+    try {
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "login", email }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        toast.error(data.error || "Failed to log in");
+        return false;
+      }
+
+      const newUser: User = {
+        username: data.user.username,
+        email: data.user.email,
+        role: role, // Log in with the selected role
+      };
+
+      setUser(newUser);
+      localStorage.setItem("lumina_auth_user", JSON.stringify(newUser));
+      toast.success(`Welcome back, ${newUser.username}!`);
+      
+      // Redirect based on role
+      if (role === "teacher") {
+        router.push("/teacher");
+      } else {
+        router.push("/my-learnings");
+      }
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error("Error connecting to server");
       return false;
     }
-
-    const newUser: User = {
-      username: found.username,
-      email: found.email,
-      role: role, // Log in with the selected role
-    };
-
-    setUser(newUser);
-    localStorage.setItem("lumina_auth_user", JSON.stringify(newUser));
-    toast.success(`Welcome back, ${newUser.username}!`);
-    
-    // Redirect based on role
-    if (role === "teacher") {
-      router.push("/teacher");
-    } else {
-      router.push("/my-learnings");
-    }
-    return true;
   };
 
   const signup = async (username: string, email: string, role: UserRole): Promise<boolean> => {
     if (typeof window === "undefined") return false;
     
-    const registeredStr = localStorage.getItem("lumina_registered_users") || "[]";
-    let users = [];
     try {
-      users = JSON.parse(registeredStr);
-    } catch {
-      // ignore
-    }
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "signup", username, email }),
+      });
+      const data = await response.json();
 
-    const emailExists = users.some((u: any) => u.email.toLowerCase() === email.toLowerCase());
-    if (emailExists) {
-      toast.error("Account already exists with this email. Try logging in.");
+      if (!response.ok || data.error) {
+        toast.error(data.error || "Failed to create account");
+        return false;
+      }
+
+      const newUser: User = {
+        username: username,
+        email: email,
+        role: role,
+      };
+
+      setUser(newUser);
+      localStorage.setItem("lumina_auth_user", JSON.stringify(newUser));
+      toast.success(`Account created! Welcome, ${username}.`);
+
+      // Redirect based on role
+      if (role === "teacher") {
+        router.push("/teacher");
+      } else {
+        router.push("/my-learnings");
+      }
+      return true;
+    } catch (e) {
+      console.error(e);
+      toast.error("Error connecting to server");
       return false;
     }
-
-    // Register user details
-    const newRegUser = { username, email };
-    users.push(newRegUser);
-    localStorage.setItem("lumina_registered_users", JSON.stringify(users));
-
-    const newUser: User = {
-      username: username,
-      email: email,
-      role: role,
-    };
-
-    setUser(newUser);
-    localStorage.setItem("lumina_auth_user", JSON.stringify(newUser));
-    toast.success(`Account created! Welcome, ${username}.`);
-
-    // Redirect based on role
-    if (role === "teacher") {
-      router.push("/teacher");
-    } else {
-      router.push("/my-learnings");
-    }
-    return true;
   };
 
   const loginAsGuest = async (role: "guest_student" | "guest_teacher") => {

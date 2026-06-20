@@ -70,7 +70,6 @@ async function fetchSearchResults(query: string, apiKey: string) {
       };
     }>;
   };
-
   return data.items ?? [];
 }
 
@@ -78,7 +77,7 @@ async function fetchVideoDetails(videoIds: string[], apiKey: string) {
   if (!videoIds.length) return [];
 
   const url = new URL(YOUTUBE_VIDEOS_URL);
-  url.searchParams.set("part", "snippet,contentDetails");
+  url.searchParams.set("part", "snippet,contentDetails,statistics");
   url.searchParams.set("id", videoIds.join(","));
   url.searchParams.set("key", apiKey);
 
@@ -103,7 +102,6 @@ async function fetchVideoDetails(videoIds: string[], apiKey: string) {
       contentDetails?: { duration?: string };
     }>;
   };
-
   return data.items ?? [];
 }
 
@@ -116,7 +114,9 @@ async function buildRecommendations(queries: string[]): Promise<YouTubeRecommend
   const recommendations: YouTubeRecommendation[] = [];
   const seenVideoIds = new Set<string>();
 
-  for (const query of queries.slice(0, 3)) {
+  for (const query of queries) {
+    if (recommendations.length >= 6) break;
+
     const searchItems = await fetchSearchResults(query, apiKey);
     const videoIds = searchItems
       .map((item) => item.id?.videoId)
@@ -125,6 +125,8 @@ async function buildRecommendations(queries: string[]): Promise<YouTubeRecommend
 
     const detailedItems = await fetchVideoDetails(videoIds, apiKey);
     for (const item of detailedItems) {
+      if (recommendations.length >= 6) break;
+
       const videoId = item.id;
       const snippet = item.snippet;
       if (!videoId || !snippet?.title || !snippet.channelTitle) continue;
@@ -136,42 +138,51 @@ async function buildRecommendations(queries: string[]): Promise<YouTubeRecommend
       const rawTags = snippet.tags ?? [];
       const conceptTags = buildConceptTags(query, title, description, rawTags);
 
+      const thumbnailUrl =
+        snippet.thumbnails?.medium?.url ??
+        snippet.thumbnails?.default?.url ??
+        `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
       recommendations.push({
         videoId,
         title,
         channelTitle: snippet.channelTitle,
-        thumbnailUrl: snippet.thumbnails?.medium?.url ?? snippet.thumbnails?.default?.url ?? "",
+        thumbnailUrl,
         url: `https://www.youtube.com/watch?v=${videoId}`,
         conceptTags,
-        reason: `Matched the learning theme "${normalizeQuery(query)}" and shares overlapping technical keywords.`,
+        reason: `Recommended because it covers related concepts from your session: ${query}`,
       });
-
-      if (recommendations.length >= 6) break;
     }
-
-    if (recommendations.length >= 6) break;
   }
 
-  if (recommendations.length > 0) return recommendations.slice(0, 6);
-
-  return [];
+  return recommendations;
 }
 
-async function generateFallbackQueries(queries: string[]): Promise<string[]> {
-  if (queries.length > 0) return queries;
-  return ["technical tutorial", "beginner project walkthrough", "concept recap"];
-}
-
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const body = (await request.json()) as { queries?: unknown };
-    const queries = Array.isArray(body.queries)
-      ? body.queries.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean)
-      : [];
+    const { searchParams } = new URL(request.url);
+    const title = searchParams.get("title");
+    const description = searchParams.get("description");
+    const tagsParam = searchParams.get("tags");
 
-    const finalQueries = await generateFallbackQueries(queries);
-    const recommendations = await buildRecommendations(finalQueries);
+    if (!title) {
+      return NextResponse.json({ error: "Missing title parameter" }, { status: 400 });
+    }
 
+    const primaryQuery = normalizeQuery(title);
+    const queries: string[] = [primaryQuery];
+
+    if (description) {
+      const descKeywords = extractKeywords(description, 4).join(" ");
+      if (descKeywords) queries.push(`${primaryQuery} ${descKeywords}`.trim());
+    }
+
+    if (tagsParam) {
+      const tags = tagsParam.split(",").map((t) => t.trim()).filter(Boolean);
+      if (tags.length > 0) queries.push(tags.slice(0, 3).join(" "));
+    }
+
+    const recommendations = await buildRecommendations(queries);
     return NextResponse.json({ recommendations });
   } catch (error) {
     console.error("YouTube recommendation error:", error);
@@ -182,20 +193,18 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const title = searchParams.get("title");
-  if (!title) {
-    return NextResponse.json({ error: "Missing title parameter" }, { status: 400 });
-  }
-
+export async function POST(req: NextRequest) {
   try {
-    const recommendations = await buildRecommendations([title]);
+    const { queries } = await req.json();
+    if (!queries || !Array.isArray(queries)) {
+      return NextResponse.json({ error: "Missing or invalid queries parameter" }, { status: 400 });
+    }
+    const recommendations = await buildRecommendations(queries);
     return NextResponse.json({ recommendations });
   } catch (error) {
-    console.error("YouTube recommendation error:", error);
+    console.error("YouTube recommendation POST error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch YouTube recommendations" },
+      { error: "Failed to fetch YouTube recommendations" },
       { status: 500 }
     );
   }

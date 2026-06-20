@@ -78,46 +78,58 @@ export default function Navigation() {
   const { user, logout } = useAuth();
   const [meetingInvite, setMeetingInvite] = useState<{ id: string; topic: string; host: string } | null>(null);
 
+  // Derive whether this user is a student
+  const isStudentRole = user?.role === "student" || user?.role === "guest_student";
+
   const checkInvite = useCallback(() => {
     if (typeof window === "undefined") return;
-    const inviteStr = localStorage.getItem("lumina_active_meeting_invite");
-    if (inviteStr) {
-      try {
-        const parsed = JSON.parse(inviteStr);
-        if (parsed && parsed.active && !pathname.includes(`/zoom/${parsed.id}`)) {
-          setMeetingInvite(parsed);
-          return;
-        }
-      } catch {
-        // ignore
-      }
+    // Only students receive meeting invitations — teachers create meetings
+    if (!isStudentRole) {
+      setMeetingInvite(null);
+      return;
     }
-    setMeetingInvite(null);
-  }, [pathname]);
+    fetch("/api/meetings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.activeInvite) {
+          const invite = data.activeInvite;
+          // Don't show if already declined or already in this meeting room
+          const isDeclined = localStorage.getItem(`lumina_declined_invite_${invite.id}`) === "true";
+          const isAlreadyInMeeting = pathname.includes(`/zoom/${invite.id}`);
+          if (!isDeclined && !isAlreadyInMeeting) {
+            setMeetingInvite(invite);
+            return;
+          }
+        }
+        setMeetingInvite(null);
+      })
+      .catch((err) => console.error("Error checking meetings", err));
+  }, [pathname, isStudentRole]);
 
   useEffect(() => {
     checkInvite();
-    window.addEventListener("storage", checkInvite);
-    const interval = setInterval(checkInvite, 2000);
-
-    return () => {
-      window.removeEventListener("storage", checkInvite);
-      clearInterval(interval);
-    };
+    // Poll every 5 s — 2 s was causing excessive server load
+    const interval = setInterval(checkInvite, 5000);
+    return () => clearInterval(interval);
   }, [checkInvite]);
 
   const handleAcceptInvite = () => {
     if (!meetingInvite) return;
+    const inviteId = meetingInvite.id;
+    // Mark this invite as accepted so the room page can verify they came through the proper flow
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`lumina_accepted_invite_${inviteId}`, "true");
+    }
     setMeetingInvite(null);
-    router.push(`/zoom/${meetingInvite.id}?role=student`);
+    router.push(`/zoom/${inviteId}?role=student`);
   };
 
   const handleDeclineInvite = () => {
-    setMeetingInvite(null);
-    if (typeof window !== "undefined" && meetingInvite) {
-      localStorage.removeItem("lumina_active_meeting_invite");
-      window.dispatchEvent(new Event("storage"));
+    if (!meetingInvite) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`lumina_declined_invite_${meetingInvite.id}`, "true");
     }
+    setMeetingInvite(null);
   };
 
   const links = [
