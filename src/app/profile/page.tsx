@@ -1,17 +1,31 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useTranslation } from "@/contexts/UILanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [username, setUsername] = useState("Alex Rivera");
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState("Alex Rivera");
 
+  useEffect(() => {
+    if (user) {
+      setUsername(user.username);
+      setEditValue(user.username);
+    }
+  }, [user]);
+
   function saveUsername() {
     setUsername(editValue);
     setIsEditing(false);
+    if (user && typeof window !== "undefined") {
+      const updatedUser = { ...user, username: editValue };
+      localStorage.setItem("lumina_auth_user", JSON.stringify(updatedUser));
+      window.dispatchEvent(new Event("storage"));
+    }
   }
 
   const stats = [

@@ -379,15 +379,10 @@ function QuizPopupInner({
   const rtl = isRTL(targetLocale);
   const { t } = useTranslation();
   const questions: QuizQuestion[] = getBreakpointQuestions(breakpoint, isRetry);
-
-  if (!questions || questions.length === 0) {
-    return null;
-  }
-
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<AnswerState[]>(() =>
-    buildInitialAnswers(questions.length).map((answer, index) => {
-      const question = questions[index];
+    buildInitialAnswers(questions ? questions.length : 0).map((answer, index) => {
+      const question = questions?.[index];
       if (!question) return answer;
 
       if (question.type === "code") {
@@ -409,9 +404,19 @@ function QuizPopupInner({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
 
-  const currentQuestion = questions[currentIndex];
-  const currentAnswer = answers[currentIndex];
-  const isVoiceFlow = isVoiceQuestion(currentQuestion);
+  const currentQuestion = questions && questions.length > 0 ? questions[currentIndex] : undefined;
+  const currentAnswer = (answers && answers.length > 0 && answers[currentIndex] ? answers[currentIndex] : {
+    selectedIndex: null,
+    textValue: "",
+    codeValue: "",
+    voiceText: "",
+    voiceScore: null,
+    voiceFeedback: "",
+    gradeReason: "",
+    isRevealed: false,
+    isCorrect: null,
+  }) as AnswerState;
+  const isVoiceFlow = currentQuestion ? isVoiceQuestion(currentQuestion) : false;
 
   // Focus trap + initial focus
   useEffect(() => {
@@ -739,6 +744,11 @@ function QuizPopupInner({
       passed: true,
     });
   }, [lastResult, onPass, questions.length, scoreCount]);
+
+  // Early return if no questions are loaded, placed after all Hook declarations
+  if (!questions || questions.length === 0) {
+    return null;
+  }
 
   // ---------------------------------------------------------------------------
   // Render helpers
