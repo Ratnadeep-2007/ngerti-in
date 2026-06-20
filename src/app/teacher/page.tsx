@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useFocusTracker } from "@/lib/use-focus-tracker";
 import { toast } from "sonner";
+import { getLeaderboardData, LeaderboardEntry } from "@/lib/leaderboard";
 
 interface MeetingInvite {
   id: string;
@@ -20,6 +21,8 @@ export default function TeacherDashboard() {
   // States
   const [topic, setTopic] = useState("");
   const [meetings, setMeetings] = useState<MeetingInvite[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardTab, setLeaderboardTab] = useState<"daily" | "weekly">("daily");
   const [isClient, setIsClient] = useState(false);
 
   // Hook for distraction avoidance
@@ -39,6 +42,8 @@ export default function TeacherDashboard() {
         console.error(e);
       }
     }
+    // Load leaderboard
+    setLeaderboard(getLeaderboardData());
   }, []);
 
   // Web camera streaming to visual element
@@ -293,14 +298,14 @@ export default function TeacherDashboard() {
 
         </div>
 
-        {/* Right Column: Active and Past Meetings (4 cols) */}
+        {/* Right Column: Active and Past Meetings & Leaderboard (4 cols) */}
         <div className="lg:col-span-4 space-y-8">
-          <div className="glass-panel pixel-border p-6 rounded-xl space-y-6 h-full flex flex-col">
+          <div className="glass-panel pixel-border p-6 rounded-xl space-y-6 flex flex-col">
             <h2 className="text-xl font-black text-[var(--foreground)] flex items-center gap-2">
               <span>📅</span> Live Meetings Log
             </h2>
 
-            <div className="space-y-4 flex-1 overflow-y-auto max-h-[500px] pr-1">
+            <div className="space-y-4 flex-1 overflow-y-auto max-h-[220px] pr-1">
               {meetings.length === 0 ? (
                 <div className="text-center py-12 text-[var(--muted)] border border-dashed border-border p-6 text-sm font-medium">
                   No meetings hosted yet. Use the creation pane to broadcast a call.
@@ -347,6 +352,93 @@ export default function TeacherDashboard() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+
+          {/* Student Leaderboard */}
+          <div className="glass-panel pixel-border p-6 rounded-xl space-y-6 flex flex-col">
+            <div>
+              <h2 className="text-xl font-black text-[var(--foreground)] flex items-center gap-2">
+                <span>🏆</span> Student Leaderboard
+              </h2>
+              <p className="text-[10px] text-[var(--muted)] mt-1">
+                Monitor student competency ranks across daily and weekly metrics.
+              </p>
+            </div>
+
+            {/* Leaderboard toggle tabs */}
+            <div className="grid grid-cols-2 gap-2 bg-black/20 p-1 pixel-border">
+              <button
+                onClick={() => setLeaderboardTab("daily")}
+                className={`py-1.5 font-bold text-xs pixel-border transition-all ${
+                  leaderboardTab === "daily"
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--foreground)] hover:bg-black/10"
+                }`}
+              >
+                Daily Rank
+              </button>
+              <button
+                onClick={() => setLeaderboardTab("weekly")}
+                className={`py-1.5 font-bold text-xs pixel-border transition-all ${
+                  leaderboardTab === "weekly"
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--foreground)] hover:bg-black/10"
+                }`}
+              >
+                Weekly Rank
+              </button>
+            </div>
+
+            {/* List */}
+            <div className="space-y-2 overflow-y-auto max-h-[280px] pr-1">
+              {[...leaderboard]
+                .sort((a, b) =>
+                  leaderboardTab === "daily" ? b.dailyScore - a.dailyScore : b.weeklyScore - a.weeklyScore
+                )
+                .map((entry, index) => {
+                  const rank = index + 1;
+                  const score = leaderboardTab === "daily" ? entry.dailyScore : entry.weeklyScore;
+
+                  let rankBadge = `${rank}`;
+                  let rankStyle = "bg-gray-800 text-gray-400";
+
+                  if (rank === 1) {
+                    rankBadge = "🥇";
+                    rankStyle = "bg-yellow-500/20 text-yellow-400 border-yellow-500";
+                  } else if (rank === 2) {
+                    rankBadge = "🥈";
+                    rankStyle = "bg-gray-400/20 text-gray-300 border-gray-400";
+                  } else if (rank === 3) {
+                    rankBadge = "🥉";
+                    rankStyle = "bg-amber-700/20 text-amber-500 border-amber-600";
+                  }
+
+                  return (
+                    <div
+                      key={entry.username}
+                      className="flex items-center justify-between p-3 pixel-border bg-[var(--surface-light)] border-gray-700/50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-7 h-7 flex items-center justify-center text-xs font-black pixel-border ${rankStyle}`}
+                        >
+                          {rankBadge}
+                        </span>
+                        <span className="text-xl">{entry.avatar}</span>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold text-[var(--foreground)]">
+                            {entry.username}
+                          </span>
+                          <span className="text-[9px] uppercase tracking-wider text-[var(--muted)]">
+                            {entry.role}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="font-extrabold text-base text-[var(--foreground)]">{score}%</span>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>
