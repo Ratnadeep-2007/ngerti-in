@@ -13,6 +13,7 @@ import { getSession, updateProgress, updateSession, saveFinalQuiz, markFinalQuiz
 import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
 import { getQuizPlan } from "@/lib/quiz-planner";
+import { buildVoiceQuestion } from "@/lib/voice-checkpoints";
 import { useFocusTracker } from "@/lib/use-focus-tracker";
 import type { Session, TranslatedContent, Breakpoint, QuizPerformanceScore } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
@@ -289,6 +290,7 @@ export default function LearnSessionPage() {
 
             if (newBp) {
               const updatedBreakpoints = [...session.translatedContent.breakpoints];
+              newBp.questions.push(buildVoiceQuestion(`Checkpoint ${index + 1}/${updatedBreakpoints.length}`));
               updatedBreakpoints[index] = newBp;
               const updatedSession = updateSession(session.id, {
                 translatedContent: { ...session.translatedContent, breakpoints: updatedBreakpoints }
@@ -306,11 +308,17 @@ export default function LearnSessionPage() {
         }
 
         if (bpReady.questions.length === 0) {
-          console.warn("JIT Generation failed to produce questions, skipping breakpoint.");
-          setActiveBreakpointIndex(null);
-          setQuizVisible(false);
-          videoPlayerRef.current?.play();
-          return;
+          console.warn("JIT Generation failed to produce questions, falling back to voice question.");
+          const updatedBreakpoints = [...session.translatedContent.breakpoints];
+          const fallbackBp = { ...bpReady, questions: [buildVoiceQuestion(`Checkpoint ${index + 1}/${updatedBreakpoints.length}`)] };
+          updatedBreakpoints[index] = fallbackBp;
+          const updatedSession = updateSession(session.id, {
+            translatedContent: { ...session.translatedContent, breakpoints: updatedBreakpoints }
+          });
+          if (updatedSession) {
+            setSession(updatedSession);
+            bpReady = fallbackBp;
+          }
         }
       }
 
@@ -690,8 +698,13 @@ export default function LearnSessionPage() {
     if (session.mode === "jolly") {
       const dialogue = session.translatedContent.companionDialogue;
       triggerCompanionState("celebration", dialogue.videoComplete || t("learn.companionCertReady"), 3000);
+      setTimeout(() => {
+        router.push(`/recap/${session.id}`);
+      }, 2000);
+    } else {
+      router.push(`/recap/${session.id}`);
     }
-  }, [session, stopFocusTracking, triggerCompanionState, t]);
+  }, [session, stopFocusTracking, triggerCompanionState, t, router]);
 
   const handleFinalQuizClose = useCallback(() => {
     if (!finalQuizIsRetry) {

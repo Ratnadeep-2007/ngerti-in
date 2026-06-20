@@ -21,7 +21,7 @@ const DIFFICULTY_PLANS: Record<QuizDifficulty, DifficultyPlan> = {
     prefetchWindowMinutes: 15,
   },
   hard: {
-    intervalMinutes: 3,
+    intervalMinutes: 60 / 23, // Exactly 23 checkpoints in 60 minutes
     questionsPerBreakpoint: 3,
     initialWindowMinutes: 30,
     prefetchWindowMinutes: 10,
