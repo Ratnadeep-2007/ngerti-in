@@ -243,7 +243,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function Vid
 
   useImperativeHandle(ref, () => ({
     seekTo: (seconds: number) => {
-      playerRef.current?.seekTo(seconds, "seconds");
+      handleSeek(seconds);
       setCurrentTime(seconds);
       if (!playing) setPlaying(true);
     },

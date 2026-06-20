@@ -18,61 +18,7 @@ function isOpenEndedQuestion(
   );
 }
 
-function normalizeText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
 
-function tokenize(value: string): string[] {
-  return normalizeText(value).match(/[a-z0-9_+-]{3,}/g) ?? [];
-}
-
-function localSemanticFallback(
-  question: TextQuestion | CodeQuestion,
-  answer: string
-): { correct: boolean; reason: string } {
-  const normalizedAnswer = normalizeText(answer);
-  if (!normalizedAnswer) {
-    return { correct: false, reason: "No answer was provided." };
-  }
-
-  if (question.type === "code") {
-    // Basic local fallback for code: just ensure it's not empty and maybe contains standard characters
-    if (answer.trim().length > 5) {
-      return { correct: true, reason: "Code was submitted. (Fallback offline check)" };
-    }
-    return { correct: false, reason: "Code snippet too short." };
-  }
-
-  const expected = question.expectedAnswer ? normalizeText(question.expectedAnswer) : "";
-  if (expected) {
-    if (
-      normalizedAnswer === expected ||
-      normalizedAnswer.includes(expected) ||
-      expected.includes(normalizedAnswer)
-    ) {
-      return { correct: true, reason: "Answer matches the expected response." };
-    }
-  }
-
-  const referenceTokens = new Set<string>([
-    ...tokenize(question.question),
-    ...tokenize(question.explanation ?? ""),
-    ...(question.expectedAnswer ? tokenize(question.expectedAnswer) : []),
-    ...(question.acceptedKeywords ?? []).flatMap((keyword) => tokenize(keyword)),
-  ]);
-  const answerTokens = tokenize(answer);
-  const shared = answerTokens.filter((token) => referenceTokens.has(token));
-  const score = referenceTokens.size > 0 ? shared.length / referenceTokens.size : 0;
-
-  if (shared.length >= 3 && score >= 0.35) {
-    return { correct: true, reason: "Answer shares the core idea of the expected response." };
-  }
-
-  return {
-    correct: false,
-    reason: "The answer does not closely match the expected idea.",
-  };
-}
 
 async function gradeWithGroq(
   question: TextQuestion | CodeQuestion,
@@ -87,10 +33,14 @@ async function gradeWithGroq(
     
   const rules = isCode
     ? `- Evaluate if the code syntactically resembles the expected language.
+- Be very lenient. This is a beginner educational platform.
+- Mark correct if the code solves the core logic of the prompt's request, even if it lacks print statements, imports, or a main function wrapper.
 - Mark incorrect if they obviously wrote code in a completely different language (e.g. wrote Python when asked for C).
-- Mark correct if the code solves the prompt's request, even if it is simple or basic.
 - Mark incorrect if the code is completely unrelated nonsense or fails to answer the prompt.`
     : `- Accept paraphrases and semantically equivalent answers.
+- Compare the learner's answer against the 'Correct Concept / Explanation' or 'Expected Answer'.
+- If the 'Expected Answer' is omitted or vague, use your own expert world knowledge to determine if the learner's answer factually and correctly answers the Question.
+- The learner's answer may be a specific technical term, command, or code snippet that correctly satisfies the definition in the Concept/Explanation.
 - Do not require exact wording.
 - Mark correct if the answer demonstrates the same concept, even if phrased differently.
 - Mark incorrect if it is unrelated, contradicts the lesson, or is too vague.
@@ -108,13 +58,10 @@ ${rules}
 - Explain your reasoning briefly.
 
 Question Context:
-${JSON.stringify({
-  question: question.question,
-  explanation: question.explanation ?? "",
-  expectedAnswer: (question as TextQuestion).expectedAnswer ?? "",
-  acceptedKeywords: (question as TextQuestion).acceptedKeywords ?? [],
-  type: question.type,
-})}
+Question: ${question.question}
+Correct Concept / Explanation: ${question.explanation ?? "N/A"}
+${(question as TextQuestion).expectedAnswer ? `Expected Answer: ${(question as TextQuestion).expectedAnswer}` : ""}
+${(question as TextQuestion).acceptedKeywords?.length ? `Accepted Keywords: ${(question as TextQuestion).acceptedKeywords?.join(", ")}` : ""}
 
 Learner answer:
 ${answer}`;
@@ -165,17 +112,8 @@ export async function POST(request: NextRequest) {
     }
 
     const answer = body.answer.trim();
-    const localResult = localSemanticFallback(body.question, answer);
     const groqResult = await gradeWithGroq(body.question, answer);
-    const result =
-      groqResult === null
-        ? localResult
-        : groqResult.correct || localResult.correct
-        ? {
-            correct: true,
-            reason: localResult.correct ? localResult.reason : groqResult.reason,
-          }
-        : groqResult;
+    const result = groqResult !== null ? groqResult : { correct: false, reason: "Grading system offline. Please try again." };
 
     return NextResponse.json(result);
   } catch (error) {

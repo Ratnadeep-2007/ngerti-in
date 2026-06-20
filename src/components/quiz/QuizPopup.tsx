@@ -82,159 +82,7 @@ function getMonacoLanguage(language: string): string {
   return "javascript";
 }
 
-const TEXT_STOPWORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "as",
-  "at",
-  "be",
-  "because",
-  "by",
-  "for",
-  "from",
-  "has",
-  "have",
-  "in",
-  "is",
-  "it",
-  "its",
-  "of",
-  "on",
-  "or",
-  "that",
-  "the",
-  "their",
-  "there",
-  "this",
-  "to",
-  "was",
-  "were",
-  "with",
-  "what",
-  "when",
-  "where",
-  "which",
-  "who",
-  "why",
-  "how",
-  "so",
-  "then",
-  "than",
-  "into",
-  "about",
-  "your",
-  "you",
-  "they",
-  "them",
-  "we",
-  "he",
-  "she",
-  "i",
-  "new",
-  "result",
-  "results",
-  "answer",
-  "question",
-  "combining",
-  "combine",
-]);
 
-function tokenizeMeaningful(value: string): string[] {
-  return normalizeText(value)
-    .match(/[a-z0-9_+-]{3,}/g)
-    ?.filter((token) => !TEXT_STOPWORDS.has(token)) ?? [];
-}
-
-function buildReferenceTokens(question: TextQuestion): string[] {
-  const tokens = new Set<string>();
-
-  for (const token of tokenizeMeaningful(question.question)) tokens.add(token);
-  if (question.expectedAnswer) {
-    for (const token of tokenizeMeaningful(question.expectedAnswer)) tokens.add(token);
-  }
-  if (question.explanation) {
-    for (const token of tokenizeMeaningful(question.explanation)) tokens.add(token);
-  }
-  if ("acceptedKeywords" in question) {
-    for (const keyword of question.acceptedKeywords ?? []) {
-      for (const token of tokenizeMeaningful(keyword)) tokens.add(token);
-    }
-  }
-
-  return [...tokens];
-}
-
-function overlapScore(answerTokens: string[], referenceTokens: string[]): number {
-  if (referenceTokens.length === 0) return 0;
-  const reference = new Set(referenceTokens);
-  const shared = answerTokens.filter((token) => reference.has(token));
-  return shared.length / reference.size;
-}
-
-function isLikelyCorrectText(answer: string, question: TextQuestion): boolean {
-  const normalizedAnswer = normalizeText(answer);
-  if (!normalizedAnswer) return false;
-
-  if (question.expectedAnswer) {
-    const expected = normalizeText(question.expectedAnswer);
-    if (
-      normalizedAnswer === expected ||
-      normalizedAnswer.includes(expected) ||
-      expected.includes(normalizedAnswer)
-    ) {
-      return true;
-    }
-  }
-
-  const answerTokens = tokenizeMeaningful(answer);
-  if (answerTokens.length === 0) return false;
-
-  const referenceTokens = buildReferenceTokens(question);
-  if (referenceTokens.length > 0) {
-    const score = overlapScore(answerTokens, referenceTokens);
-    const sharedTokens = answerTokens.filter((token) => referenceTokens.includes(token));
-
-    if (score >= 0.5 && sharedTokens.length >= 2) {
-      return true;
-    }
-
-    if (score >= 0.35 && sharedTokens.length >= 3) {
-      return true;
-    }
-
-    if (question.expectedAnswer) {
-      const expectedTokens = tokenizeMeaningful(question.expectedAnswer);
-      const expectedScore = overlapScore(answerTokens, expectedTokens);
-      if (expectedScore >= 0.6 && expectedTokens.length <= 4) {
-        return true;
-      }
-    }
-  }
-
-  if ("acceptedKeywords" in question && question.acceptedKeywords?.length) {
-    const keywordHits = question.acceptedKeywords.filter((keyword) =>
-      normalizedAnswer.includes(normalizeText(keyword))
-    );
-    if (keywordHits.length === question.acceptedKeywords.length) return true;
-    if (keywordHits.length >= Math.max(1, Math.ceil(question.acceptedKeywords.length / 2))) return true;
-  }
-
-  return Boolean(question.expectedAnswer) ? false : answerTokens.length >= 3;
-}
-
-function isLikelyCorrectCode(answer: string, question: CodeQuestion): boolean {
-  const normalizedAnswer = normalizeText(answer);
-  if (!normalizedAnswer) return false;
-  if (question.solution) {
-    return normalizeText(question.solution) === normalizedAnswer;
-  }
-  if (question.expectedOutput) {
-    return normalizedAnswer.includes(normalizeText(question.expectedOutput));
-  }
-  return true;
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -571,14 +419,10 @@ function QuizPopupInner({
           const result = (await response.json()) as { correct?: boolean };
           isCorrect = Boolean(result.correct);
         } else {
-          isCorrect = currentQuestion.type === "text" 
-            ? isLikelyCorrectText(answerPayload, currentQuestion)
-            : isLikelyCorrectCode(answerPayload, currentQuestion);
+          isCorrect = false; // Graceful fallback on API failure
         }
       } catch {
-        isCorrect = currentQuestion.type === "text" 
-          ? isLikelyCorrectText(answerPayload, currentQuestion)
-          : isLikelyCorrectCode(answerPayload, currentQuestion);
+        isCorrect = false; // Graceful fallback on network failure
       } finally {
         setIsCheckingAnswer(false);
       }
