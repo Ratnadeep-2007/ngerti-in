@@ -137,7 +137,7 @@ function HomePageInner() {
       setCurrentStep(2);
 
       const duration = extractData.metadata.duration;
-      const voiceBreakpoints = buildVoiceSummaryBreakpoints(duration);
+      const voiceBreakpoints = buildVoiceSummaryBreakpoints(duration, quizDifficulty);
 
       setCurrentStep(4);
 

@@ -1,9 +1,10 @@
-import type { Breakpoint, VoiceQuestion } from "./types";
+import type { Breakpoint, VoiceQuestion, QuizDifficulty } from "./types";
+import { getQuizPlan } from "./quiz-planner";
 
 export const VOICE_SUMMARY_PROMPT =
   "What did you learn so far, explain in your own language";
 
-function buildVoiceQuestion(positionLabel: string): VoiceQuestion {
+export function buildVoiceQuestion(positionLabel: string): VoiceQuestion {
   return {
     type: "voice",
     question: VOICE_SUMMARY_PROMPT,
@@ -15,21 +16,43 @@ function buildVoiceQuestion(positionLabel: string): VoiceQuestion {
   };
 }
 
-export function buildVoiceSummaryBreakpoints(durationSeconds: number): Breakpoint[] {
-  const timestamps = [
-    Math.max(1, Math.round(durationSeconds / 3)),
-    Math.max(1, Math.round((durationSeconds * 2) / 3)),
-    Math.max(1, Math.round(durationSeconds)),
-  ];
+export function buildVoiceSummaryBreakpoints(
+  durationSeconds: number,
+  difficulty: QuizDifficulty = "medium"
+): Breakpoint[] {
+  const plan = getQuizPlan(durationSeconds, difficulty);
+  const intervalSeconds = plan.intervalMinutes * 60;
+  
+  const timestamps: number[] = [];
+  let currentTime = intervalSeconds;
+  
+  while (currentTime < durationSeconds - 30) {
+    timestamps.push(currentTime);
+    currentTime += intervalSeconds;
+  }
 
-  return timestamps.map((timestamp, index) => ({
+  const breakpointsList: Breakpoint[] = timestamps.map((timestamp, index) => ({
     timestamp,
-    topic:
-      index === 2
-        ? "Voice Summary Check - End"
-        : `Voice Summary Check ${index + 1}/3`,
-    questions: [buildVoiceQuestion(`${index + 1}/3`)],
+    topic: `Checkpoint ${index + 1}`,
+    questions: [], // Empty to trigger JIT generation of MCQs
     primaryQuestions: [],
     retryQuestions: [],
   }));
+
+  // Inject exactly 3 "What have you learnt so far" voice questions
+  const total = breakpointsList.length;
+  if (total >= 3) {
+    const indices = [
+      Math.floor(total * 0.33) - 1,
+      Math.floor(total * 0.66) - 1,
+      total - 1,
+    ];
+    indices.forEach((idx) => {
+      if (idx >= 0 && idx < total) {
+        breakpointsList[idx].questions = [buildVoiceQuestion(`Checkpoint ${idx + 1}/${total}`)];
+      }
+    });
+  }
+
+  return breakpointsList;
 }
