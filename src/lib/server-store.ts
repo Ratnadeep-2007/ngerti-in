@@ -17,6 +17,7 @@ export interface ServerLeaderboardEntry {
 interface GlobalStore {
   meetings: ServerMeeting[];
   leaderboard: ServerLeaderboardEntry[];
+  users: { email: string; username: string }[];
 }
 
 declare global {
@@ -34,6 +35,7 @@ const store: GlobalStore = globalThis.serverStore ?? {
     { username: "Sarah Connor", role: "student", dailyScore: 79, weeklyScore: 82, avatar: "💪" },
     { username: "Chris Evans", role: "student", dailyScore: 72, weeklyScore: 75, avatar: "🛡️" },
   ],
+  users: [],
 };
 
 if (process.env.NODE_ENV !== "production") {

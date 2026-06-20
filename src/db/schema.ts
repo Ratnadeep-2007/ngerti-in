@@ -1,5 +1,11 @@
 import { pgTable, text, boolean, integer } from "drizzle-orm/pg-core";
 
+export const users = pgTable("users", {
+  email: text("email").primaryKey(),
+  username: text("username").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
 export const meetings = pgTable("meetings", {
   id: text("id").primaryKey(),
   topic: text("topic").notNull(),
