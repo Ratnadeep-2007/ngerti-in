@@ -347,6 +347,9 @@ export default function LearnSessionPage() {
           maxBreakpoints: 1,
           questionsPerBreakpoint,
           difficulty: sessionDifficulty,
+          startTime: session.metadata.duration,
+          endTime: session.metadata.duration,
+          videoTitle: session.metadata.title,
         }),
         signal: abortController.signal,
       });
@@ -515,9 +518,9 @@ export default function LearnSessionPage() {
       return;
     }
 
-    // If already generated, auto-show the quiz popup
-    if (session.finalQuiz !== undefined) {
-      if (session.finalQuiz !== null) setFinalQuizVisible(true);
+    // If already generated and valid, auto-show the quiz popup
+    if (session.finalQuiz) {
+      setFinalQuizVisible(true);
       return;
     }
     if (finalQuizGenerationRef.current.inProgress) return;
@@ -588,9 +591,9 @@ export default function LearnSessionPage() {
   const handleTakeFinalQuiz = useCallback(async () => {
     if (!session) return;
 
-    // Quiz already cached — show instantly
-    if (session.finalQuiz !== undefined) {
-      if (session.finalQuiz !== null) setFinalQuizVisible(true);
+    // Quiz already cached and valid — show instantly
+    if (session.finalQuiz) {
+      setFinalQuizVisible(true);
       return;
     }
 
