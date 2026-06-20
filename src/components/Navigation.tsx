@@ -140,6 +140,15 @@ export default function Navigation() {
                 </Link>
               )}
 
+              {/* Student control dashboard shortcut - visible only to student roles */}
+              {(user.role === "student" || user.role === "guest_student") && (
+                <Link href="/my-learnings" onClick={() => setIsMenuOpen(false)}>
+                  <button className="flex items-center gap-2 px-4 py-2 font-bold pixel-border bg-[var(--surface-light)] text-[var(--foreground)] hover:bg-[var(--primary)] hover:text-white transition-colors">
+                    <span>🎓</span> Student Panel
+                  </button>
+                </Link>
+              )}
+
               <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
                 <button className="flex items-center gap-2 px-4 py-2 font-bold pixel-border bg-[var(--surface-light)] text-[var(--foreground)] hover:bg-[var(--primary)] hover:text-white transition-colors">
                   <span>👤</span> {user.username} <span className="text-[10px] opacity-75 uppercase">({user.role.replace("guest_", "guest ")})</span>
