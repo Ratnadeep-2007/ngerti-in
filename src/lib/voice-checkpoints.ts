@@ -21,17 +21,17 @@ export function buildVoiceSummaryBreakpoints(
   difficulty: QuizDifficulty = "medium"
 ): Breakpoint[] {
   const plan = getQuizPlan(durationSeconds, difficulty);
-  const intervalSeconds = plan.intervalMinutes * 60;
-  
-  const timestamps: number[] = [];
-  let currentTime = intervalSeconds;
-  
-  while (currentTime < durationSeconds - 30) {
-    timestamps.push(currentTime);
-    currentTime += intervalSeconds;
-  }
+  const totalBreakpoints = Math.max(1, plan.maxBreakpoints);
+  const timestamps = Array.from({ length: totalBreakpoints }, (_, index) => {
+    const position = Math.round(((index + 1) * durationSeconds) / totalBreakpoints);
+    return Math.max(1, Math.min(durationSeconds, position));
+  });
 
-  const breakpointsList: Breakpoint[] = timestamps.map((timestamp, index) => ({
+  const dedupedTimestamps = timestamps.filter((timestamp, index, all) => {
+    return index === 0 || timestamp > all[index - 1];
+  });
+
+  const breakpointsList: Breakpoint[] = dedupedTimestamps.map((timestamp, index) => ({
     timestamp,
     topic: `Checkpoint ${index + 1}`,
     questions: [], // Empty to trigger JIT generation of MCQs

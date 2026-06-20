@@ -117,6 +117,15 @@ export interface FocusEvaluation {
   fidgetingVariance: number;
   gazeWanderingRatio: number;
   bodyMovementVariance: number;
+  groqEvaluation?: FaceTrackingGroqEvaluation;
+}
+
+export interface FaceTrackingGroqEvaluation {
+  headline: string;
+  summaryMarkdown: string;
+  strengths: string[];
+  concerns: string[];
+  suggestions: string[];
 }
 
 export interface QuizPerformanceScore {

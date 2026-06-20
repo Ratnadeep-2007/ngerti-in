@@ -171,6 +171,7 @@ Translates UI strings with a 3-tier strategy: bundled translations (instant) →
 - npm or yarn
 - [Groq API Key](https://console.groq.com)
 - [Lingo.dev API Key](https://lingo.dev)
+- [YouTube Data API Key](https://console.developers.google.com/)
 
 ### Installation
 
@@ -191,12 +192,14 @@ Create a `.env.local` file in the root directory with these values:
 GROQ_API_KEY=your_groq_api_key
 LINGODOTDEV_API_KEY=your_lingodotdev_api_key
 LINGODOTDEV_ENGINE_ID=your_lingodotdev_engine_id
+YOUTUBE_DATA_API_KEY=your_youtube_data_api_key
 ```
 
 Lingo.dev uses both values:
 
 - `LINGODOTDEV_API_KEY` authenticates the SDK
 - `LINGODOTDEV_ENGINE_ID` selects the translation engine for this project
+- `YOUTUBE_DATA_API_KEY` powers the post-session recommendation lookup
 
 If you are starting fresh, create the key and engine in your Lingo.dev account, then paste them into `.env.local` or `.env`.
 

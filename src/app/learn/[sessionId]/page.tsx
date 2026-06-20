@@ -14,13 +14,170 @@ import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
 import { getQuizPlan } from "@/lib/quiz-planner";
 import { buildVoiceQuestion } from "@/lib/voice-checkpoints";
-import { useFocusTracker } from "@/lib/use-focus-tracker";
+import { useFocusTracker, type FaceLandmarkPoint } from "@/lib/use-focus-tracker";
 import type { Session, TranslatedContent, Breakpoint, QuizPerformanceScore } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CompanionState = "idle" | "celebration" | "encouragement";
+
+const FACE_CONNECTIONS: Array<[number, number]> = [
+  [33, 133],
+  [133, 362],
+  [362, 263],
+  [263, 33],
+  [61, 291],
+  [291, 199],
+  [199, 61],
+  [10, 152],
+  [152, 234],
+  [234, 454],
+  [454, 356],
+  [356, 10],
+  [33, 7],
+  [7, 163],
+  [163, 144],
+  [144, 145],
+  [145, 153],
+  [153, 154],
+  [154, 155],
+  [155, 133],
+  [263, 249],
+  [249, 390],
+  [390, 373],
+  [373, 374],
+  [374, 380],
+  [380, 381],
+  [381, 382],
+  [382, 362],
+];
+
+const EMPHASIZED_POINTS = new Set([
+  33, 133, 362, 263, 61, 291, 199, 10, 152, 234, 454, 356, 7, 163, 144, 145, 153, 154, 155,
+  249, 390, 373, 374, 380, 381, 382,
+]);
+
+function CameraPreview({
+  stream,
+  landmarks,
+}: {
+  stream: MediaStream | null;
+  landmarks: FaceLandmarkPoint[] | null;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!stream) {
+      video.srcObject = null;
+      return;
+    }
+
+    video.srcObject = stream;
+    void video.play().catch(() => {
+      // If autoplay is blocked, the preview still renders once the user interacts.
+    });
+  }, [stream]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    if (!canvas || !video) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const paint = () => {
+      const width = video.clientWidth;
+      const height = video.clientHeight;
+      if (!width || !height) return;
+
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+
+      ctx.clearRect(0, 0, width, height);
+      if (!landmarks?.length) return;
+
+      ctx.save();
+      ctx.translate(width, 0);
+      ctx.scale(-1, 1);
+
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(0, 229, 255, 0.7)";
+
+      for (const [startIdx, endIdx] of FACE_CONNECTIONS) {
+        const start = landmarks[startIdx];
+        const end = landmarks[endIdx];
+        if (!start || !end) continue;
+        ctx.beginPath();
+        ctx.moveTo(start.x * width, start.y * height);
+        ctx.lineTo(end.x * width, end.y * height);
+        ctx.stroke();
+      }
+
+      for (let i = 0; i < landmarks.length; i++) {
+        const point = landmarks[i];
+        if (!point) continue;
+        const emphasized = EMPHASIZED_POINTS.has(i);
+        ctx.beginPath();
+        ctx.fillStyle = emphasized ? "rgba(255, 184, 0, 0.98)" : "rgba(255,255,255,0.9)";
+        ctx.arc(point.x * width, point.y * height, emphasized ? 2.6 : 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const leftEye = landmarks[33];
+      const rightEye = landmarks[263];
+      if (leftEye && rightEye) {
+        const eyeX = ((leftEye.x + rightEye.x) / 2) * width;
+        const eyeY = ((leftEye.y + rightEye.y) / 2) * height;
+        ctx.beginPath();
+        ctx.arc(eyeX, eyeY, 12, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255, 90, 95, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    };
+
+    paint();
+    const frame = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(frame);
+  }, [landmarks]);
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface/70 p-3 shadow-lg backdrop-blur-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-[var(--primary-text)]">Camera Preview</p>
+          <p className="text-[11px] text-muted">Mirrored live feed used for face tracking</p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${stream ? "bg-[var(--success)] text-white" : "bg-background text-muted border border-border"}`}>
+          {stream ? "Live" : "Inactive"}
+        </span>
+      </div>
+      <div className="relative overflow-hidden rounded-xl border border-border bg-black/80">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="aspect-video w-full scale-x-[-1] object-cover"
+        />
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full pointer-events-none" />
+        {!stream && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60 px-4 text-center">
+            <p className="text-sm text-white/80">Camera preview appears here once permission is granted.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -115,7 +272,7 @@ export default function LearnSessionPage() {
   const router = useRouter();
   const sessionId = typeof params.sessionId === "string" ? params.sessionId : "";
   const { t } = useTranslation();
-  const { start: startFocusTracking, stopAndEvaluate: stopFocusTracking } = useFocusTracker();
+  const { start: startFocusTracking, stopAndEvaluate: stopFocusTracking, previewStream, latestFaceLandmarks } = useFocusTracker();
 
   // ── Session state ─────────────────────────────────────────────────────────
   const [session, setSession] = useState<Session | null>(null);
@@ -171,8 +328,6 @@ export default function LearnSessionPage() {
     }
     setSession(s);
   }, [sessionId]);
-
-
 
   // ── Track cursor position for speech bubble placement ────────────────────
   useEffect(() => {
@@ -672,11 +827,41 @@ export default function LearnSessionPage() {
     }
   }, [session, handleVideoEnd]);
 
-  const handleFinalQuizPass = useCallback((result: QuizResult) => {
+  const handleFinalQuizPass = useCallback(async (result: QuizResult) => {
     if (!session) return;
     setFinalQuizVisible(false);
     setFinalQuizIsRetry(false);
+
     const focusEvaluation = stopFocusTracking();
+    let enrichedFocusEvaluation = focusEvaluation;
+
+    try {
+      const faceRes = await fetch("/api/face-evaluation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoTitle: session.metadata.title,
+          userName: session.userName,
+          mode: session.mode,
+          focusEvaluation,
+        }),
+      });
+
+      const faceData = (await faceRes.json()) as {
+        groqEvaluation?: typeof focusEvaluation.groqEvaluation;
+        error?: string;
+      };
+
+      if (faceRes.ok && faceData.groqEvaluation) {
+        enrichedFocusEvaluation = {
+          ...focusEvaluation,
+          groqEvaluation: faceData.groqEvaluation,
+        };
+      }
+    } catch (error) {
+      console.error("Face evaluation generation failed:", error);
+    }
+
     const completed = markFinalQuizPassed(session.id);
     if (completed) {
       const updated = updateSession(session.id, {
@@ -691,18 +876,19 @@ export default function LearnSessionPage() {
             completedAt: new Date().toISOString(),
           }),
         },
-        focusEvaluation,
+        focusEvaluation: enrichedFocusEvaluation,
       });
       setSession(updated ?? completed);
     }
+
     if (session.mode === "jolly") {
       const dialogue = session.translatedContent.companionDialogue;
       triggerCompanionState("celebration", dialogue.videoComplete || t("learn.companionCertReady"), 3000);
       setTimeout(() => {
-        router.push(`/recap/${session.id}`);
+        router.push(`/certificate/${session.id}`);
       }, 2000);
     } else {
-      router.push(`/recap/${session.id}`);
+      router.push(`/certificate/${session.id}`);
     }
   }, [session, stopFocusTracking, triggerCompanionState, t, router]);
 
@@ -950,6 +1136,12 @@ export default function LearnSessionPage() {
               onPlay={() => void startFocusTracking()}
               onEnd={handleVideoEnd}
             />
+          </section>
+
+          <section className="flex justify-end" aria-label="Camera preview">
+            <div className="w-full max-w-sm">
+              <CameraPreview stream={previewStream} landmarks={latestFaceLandmarks} />
+            </div>
           </section>
 
           {/* ── Session meta row ─────────────────────────────────────────── */}

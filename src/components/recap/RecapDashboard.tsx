@@ -5,6 +5,7 @@ import Markdown from "react-markdown";
 import { motion } from "framer-motion";
 import { updateSession } from "@/lib/session";
 import type { RecapChatMessage, Session, YouTubeRecommendation } from "@/lib/types";
+import FaceTrackingReport from "@/components/recap/FaceTrackingReport";
 
 interface RecapDashboardProps {
   session: Session;
@@ -215,6 +216,8 @@ export default function RecapDashboard({ session, onSessionUpdate }: RecapDashbo
         <ScoreCard label="Posture Score" value={focus?.postureScore} fallback="No camera data" />
         <ScoreCard label="Quiz Average" value={checkpointAverage ?? undefined} fallback="No quiz score data" />
       </motion.div>
+
+      {focus?.groqEvaluation && <motion.div {...reveal}><FaceTrackingReport focus={focus} /></motion.div>}
 
       <motion.div {...reveal} className="rounded-2xl border border-border bg-surface/70 p-6">
         <p className="text-xs font-bold uppercase tracking-wide text-[var(--primary-text)]">Next Steps</p>

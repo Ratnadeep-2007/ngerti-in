@@ -7,7 +7,7 @@ import { getLanguageName } from "@/lib/languages";
 import { getCompanion } from "@/lib/companions";
 import type { Session } from "@/lib/types";
 import { useTranslation } from "@/contexts/UILanguageContext";
-import RecapDashboard from "@/components/recap/RecapDashboard";
+import PostSessionEcosystem from "@/components/recap/PostSessionEcosystem";
 
 // ---- Date formatter ----
 
@@ -377,7 +377,7 @@ export default function CertificatePage({ params }: PageProps) {
           {t("certificate.shareOrDownload")}
         </p>
 
-        <RecapDashboard session={session} onSessionUpdate={setSession} />
+        <PostSessionEcosystem session={session} onSessionUpdate={setSession} />
       </main>
     </div>
   );

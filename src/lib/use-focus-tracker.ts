@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { FocusEvaluation, FocusMetricSample } from "@/lib/types";
 
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm";
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 const SAMPLE_INTERVAL_MS = 120;
+const DISTRACTION_THRESHOLD_MS = 4000;
+const DISTRACTION_MIN_FACE_FOCUS = 0.55;
+const DISTRACTION_HEAD_DRIFT_X = 0.22;
+const DISTRACTION_HEAD_DRIFT_Y = 0.18;
+const DISTRACTION_HEAD_DRIFT_Z = 0.18;
+const DISTRACTION_VARIANCE_THRESHOLD = 0.012;
 const MEDIAPIPE_BANNER = "Created TensorFlow Lite XNNPACK delegate for CPU.";
 
 type FaceLandmarkerInstance = {
@@ -15,6 +21,8 @@ type FaceLandmarkerInstance = {
   };
   close?: () => void;
 };
+
+export type FaceLandmarkPoint = { x: number; y: number; z?: number };
 
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -30,6 +38,25 @@ function variance(values: number[]): number {
   if (values.length < 2) return 0;
   const avg = average(values);
   return average(values.map((value) => (value - avg) ** 2));
+}
+
+function sampleLooksDistracted(sample: FocusMetricSample, recentSamples: FocusMetricSample[]): boolean {
+  if (!sample.faceDetected) return true;
+
+  const recentDetected = recentSamples.filter((entry) => entry.faceDetected);
+  const movement = recentDetected.map((entry) => Math.abs(entry.headX) + Math.abs(entry.headY) + Math.abs(entry.headZ));
+  const posture = recentDetected.map((entry) => entry.postureShift);
+  const movementVariance = variance(movement);
+  const postureVariance = variance(posture);
+
+  return (
+    sample.eyeFocus < DISTRACTION_MIN_FACE_FOCUS ||
+    Math.abs(sample.headX) > DISTRACTION_HEAD_DRIFT_X ||
+    Math.abs(sample.headY) > DISTRACTION_HEAD_DRIFT_Y ||
+    Math.abs(sample.headZ) > DISTRACTION_HEAD_DRIFT_Z ||
+    movementVariance > DISTRACTION_VARIANCE_THRESHOLD ||
+    postureVariance > DISTRACTION_VARIANCE_THRESHOLD
+  );
 }
 
 function installMediaPipeBannerFilter(): () => void {
@@ -154,7 +181,11 @@ export function useFocusTracker() {
   const lastSampleAtRef = useRef(0);
   const hasStartedRef = useRef(false);
   const hasShownToastRef = useRef(false);
+  const distractionSinceRef = useRef<number | null>(null);
+  const distractionToastShownRef = useRef(false);
   const restoreConsoleRef = useRef<(() => void) | null>(null);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+  const [latestFaceLandmarks, setLatestFaceLandmarks] = useState<FaceLandmarkPoint[] | null>(null);
 
   const stopLoop = useCallback(() => {
     if (rafRef.current !== null) {
@@ -182,6 +213,7 @@ export function useFocusTracker() {
       });
       permissionRef.current = "granted";
       streamRef.current = stream;
+      setPreviewStream(stream);
 
       if (!hasShownToastRef.current) {
         toast.success("Camera is on");
@@ -220,7 +252,31 @@ export function useFocusTracker() {
           try {
             const result = landmarker.detectForVideo(videoEl, now);
             const previous = samplesRef.current[samplesRef.current.length - 1] ?? null;
-            samplesRef.current.push(sampleFromLandmarks(now, result.faceLandmarks?.[0], previous));
+            const faceLandmarks = result.faceLandmarks?.[0] ?? null;
+            setLatestFaceLandmarks(faceLandmarks);
+            const nextSample = sampleFromLandmarks(now, faceLandmarks ?? undefined, previous);
+            samplesRef.current.push(nextSample);
+
+            const recentSamples = samplesRef.current.slice(-Math.ceil(DISTRACTION_THRESHOLD_MS / SAMPLE_INTERVAL_MS));
+            const isDistracted = sampleLooksDistracted(nextSample, recentSamples);
+
+            if (isDistracted) {
+              if (distractionSinceRef.current === null) {
+                distractionSinceRef.current = now;
+              }
+
+              if (
+                !distractionToastShownRef.current &&
+                distractionSinceRef.current !== null &&
+                now - distractionSinceRef.current >= DISTRACTION_THRESHOLD_MS
+              ) {
+                toast.warning("You are distracted");
+                distractionToastShownRef.current = true;
+              }
+            } else {
+              distractionSinceRef.current = null;
+              distractionToastShownRef.current = false;
+            }
           } catch {
             // MediaPipe can throw while the camera is warming up; skip that frame.
           }
@@ -234,6 +290,7 @@ export function useFocusTracker() {
       permissionRef.current = "denied";
       restoreConsoleRef.current?.();
       restoreConsoleRef.current = null;
+      setPreviewStream(null);
     }
   }, []);
 
@@ -244,11 +301,13 @@ export function useFocusTracker() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     videoRef.current = null;
+    setPreviewStream(null);
+    setLatestFaceLandmarks(null);
     restoreConsoleRef.current?.();
     restoreConsoleRef.current = null;
 
     return buildEvaluation(startedAtRef.current, permissionRef.current, samplesRef.current);
   }, [stopLoop]);
 
-  return { start, stopAndEvaluate };
+  return { start, stopAndEvaluate, previewStream, latestFaceLandmarks };
 }

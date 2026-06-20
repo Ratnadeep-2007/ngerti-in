@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import { getSession } from "@/lib/session";
 import type { Session } from "@/lib/types";
 import RecapChat from "@/components/recap/RecapChat";
+import FaceTrackingReport from "@/components/recap/FaceTrackingReport";
 
 export default function RecapDashboardPage() {
   const params = useParams();
@@ -118,6 +119,10 @@ export default function RecapDashboardPage() {
               </div>
             )}
           </section>
+
+          {session.focusEvaluation?.groqEvaluation && (
+            <FaceTrackingReport focus={session.focusEvaluation} />
+          )}
 
           <section>
             <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
