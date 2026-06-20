@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, use } from "react";
 import Link from "next/link";
+import { WarningCircle, Certificate, SealCheck } from "@phosphor-icons/react";
 import { getSession } from "@/lib/session";
 import { getLanguageName } from "@/lib/languages";
 import { getCompanion } from "@/lib/companions";
@@ -35,35 +36,37 @@ const CertificateDisplay = ({ session }: CertificateProps) => {
   return (
     <div 
       id="certificate-content"
-      className="relative w-full max-w-[900px] overflow-hidden glass-panel pixel-border p-2 bg-[#12122a] shadow-2xl"
+      className="relative w-full max-w-[900px] overflow-hidden rounded-[36px] border border-[var(--hairline)] bg-white p-3 shadow-[var(--product-shadow)]"
     >
       {/* Decorative Outer Border Wrap */}
-      <div className="relative border-4 border-double border-[var(--primary)] p-8 sm:p-12 flex flex-col items-center text-center overflow-hidden">
+      <div className="relative flex flex-col items-center overflow-hidden rounded-[30px] border border-[var(--hairline)] bg-[linear-gradient(180deg,#ffffff_0%,#f7f7f9_100%)] p-8 text-center sm:p-12">
         
         {/* Floating Companion - Fixed layout */}
         {companion && (
-          <div className="absolute left-4 top-4 w-32 h-32 pointer-events-none z-0 opacity-20 sm:opacity-100 sm:w-40 sm:h-40">
+          <div className="pointer-events-none absolute left-4 top-4 z-0 h-32 w-32 opacity-15 sm:h-40 sm:w-40 sm:opacity-70">
             <img 
               src={companion.idleGif} 
               alt={companion.name} 
-              className="w-full h-full object-contain filter drop-shadow-2xl animate-pulse"
+              className="h-full w-full object-contain apple-product-shadow"
             />
           </div>
         )}
 
         {/* Corner Accents */}
-        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-[var(--accent)] z-10" />
-        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-[var(--accent)] z-10" />
-        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-[var(--accent)] z-10" />
-        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-[var(--accent)] z-10" />
+        <div className="absolute left-0 top-0 z-10 h-10 w-10 border-l-2 border-t-2 border-[var(--primary)]" />
+        <div className="absolute right-0 top-0 z-10 h-10 w-10 border-r-2 border-t-2 border-[var(--primary)]" />
+        <div className="absolute bottom-0 left-0 z-10 h-10 w-10 border-b-2 border-l-2 border-[var(--primary)]" />
+        <div className="absolute bottom-0 right-0 z-10 h-10 w-10 border-b-2 border-r-2 border-[var(--primary)]" />
 
         <div className="relative z-10 flex flex-col items-center w-full">
           {/* Top Emblem / Header */}
           <div className="mb-8 flex flex-col items-center gap-3">
-            <div className="text-5xl drop-shadow-md animate-bounce">🏆</div>
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--surface-parchment)] text-[var(--primary)]">
+              <Certificate size={34} weight="duotone" />
+            </div>
             <div className="flex items-center gap-4">
               <div className="h-0.5 w-12 bg-[var(--primary)] opacity-50" />
-              <span className="text-sm font-bold uppercase tracking-[0.3em] text-[var(--primary-text)] pixel-text">
+              <span className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--primary-text)]">
                 {t("certificate.protocol")}
               </span>
               <div className="h-0.5 w-12 bg-[var(--primary)] opacity-50" />
@@ -72,19 +75,19 @@ const CertificateDisplay = ({ session }: CertificateProps) => {
 
           {/* Certificate title */}
           <div className="mb-4">
-            <h1 className="text-4xl font-black uppercase tracking-widest sm:text-6xl text-[var(--foreground)] pixel-text-strong">
+            <h1 className="text-4xl font-semibold tracking-[-0.05em] sm:text-6xl text-[var(--foreground)]">
               {labels.title}
             </h1>
             <div className="h-1 w-24 bg-[var(--accent)] mx-auto mt-2 opacity-80" />
           </div>
 
-          <p className="mb-8 text-xl font-bold uppercase tracking-[0.2em] text-[var(--muted)] pixel-text opacity-80">
+          <p className="mb-8 text-sm font-semibold uppercase tracking-[0.28em] text-[var(--muted)] opacity-80">
             {labels.awardedTo}
           </p>
 
           {/* User name Section */}
           <div className="mb-10 relative">
-            <p className="text-5xl sm:text-7xl font-black tracking-tight text-[var(--accent-text)] pixel-text-strong px-4 text-center">
+            <p className="px-4 text-center text-5xl font-semibold tracking-[-0.06em] text-[var(--accent-text)] sm:text-7xl">
               {session.userName}
             </p>
             <div className="absolute -bottom-2 left-0 right-0 h-1 bg-[var(--accent)] opacity-30 blur-[1px]" />
@@ -92,11 +95,11 @@ const CertificateDisplay = ({ session }: CertificateProps) => {
 
           {/* For completing label + video title */}
           <div className="mb-10 space-y-3">
-            <p className="text-lg font-bold uppercase tracking-widest text-[var(--muted)] pixel-text">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--muted)]">
               {labels.forCompleting}
             </p>
-            <div className="relative inline-block px-8 py-4 glass-panel bg-black/5 pixel-border max-w-lg">
-              <p className="text-2xl font-bold leading-tight text-[var(--foreground)] pixel-text-strong italic">
+            <div className="relative inline-block max-w-lg rounded-[22px] border border-[var(--hairline)] bg-white px-8 py-4">
+              <p className="text-2xl font-semibold italic leading-tight text-[var(--foreground)]">
                 &ldquo;{session.metadata.title}&rdquo;
               </p>
             </div>
@@ -104,49 +107,51 @@ const CertificateDisplay = ({ session }: CertificateProps) => {
 
           {/* Meta info grid - Badges */}
           <div className="grid w-full grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-            <div className="flex flex-col items-center p-4 bg-[var(--surface)] pixel-border shadow-sm">
-              <p className="text-xs font-bold uppercase text-[var(--primary-text)] pixel-text mb-1">
+            <div className="flex flex-col items-center rounded-[20px] border border-[var(--hairline)] bg-white p-4">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--primary-text)]">
                 {labels.completionDate}
               </p>
-              <p className="text-lg font-bold text-[var(--foreground)] pixel-text-strong">
+              <p className="text-lg font-semibold text-[var(--foreground)]">
                 {completionDate}
               </p>
             </div>
-            <div className="flex flex-col items-center p-4 bg-[var(--surface)] pixel-border shadow-sm border-t-4 border-t-[var(--accent)]">
-              <p className="text-xs font-bold uppercase text-[var(--primary-text)] pixel-text mb-1">
+            <div className="flex flex-col items-center rounded-[20px] border border-[var(--hairline)] bg-white p-4">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--primary-text)]">
                 {labels.language}
               </p>
-              <p className="text-lg font-bold text-[var(--foreground)] pixel-text-strong">
+              <p className="text-lg font-semibold text-[var(--foreground)]">
                 {languageName}
               </p>
             </div>
-            <div className="flex flex-col items-center p-4 bg-[var(--surface)] pixel-border shadow-sm">
-              <p className="text-xs font-bold uppercase text-[var(--primary-text)] pixel-text mb-1">
+            <div className="flex flex-col items-center rounded-[20px] border border-[var(--hairline)] bg-white p-4">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--primary-text)]">
                 {t("certificate.mode")}
               </p>
-              <p className="text-lg font-bold text-[var(--foreground)] capitalize pixel-text-strong">
+              <p className="text-lg font-semibold capitalize text-[var(--foreground)]">
                 {session.mode}
               </p>
             </div>
           </div>
 
           {/* Footer Seal */}
-          <div className="flex items-center justify-between w-full mt-4 pt-8 border-t-2 border-dashed border-[var(--border)]">
+          <div className="mt-4 flex w-full items-center justify-between border-t border-[var(--hairline)] pt-8">
             <div className="text-left">
-              <p className="text-[10px] font-bold uppercase text-[var(--muted)]">{t("certificate.verificationId")}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">{t("certificate.verificationId")}</p>
               <p className="text-xs font-mono text-[var(--primary-text)]">{session.id.slice(0, 8).toUpperCase()}</p>
             </div>
             
             <div className="flex flex-col items-center">
-              <div className="text-2xl opacity-80">🛡️</div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--muted)] pixel-text mt-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-parchment)] text-[var(--primary)]">
+                <SealCheck size={20} weight="duotone" />
+              </div>
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
                 {labels.poweredBy}
               </p>
             </div>
 
             <div className="text-right">
-              <p className="text-[10px] font-bold uppercase text-[var(--muted)]">{t("certificate.status")}</p>
-              <p className="text-xs font-bold text-[var(--success-text)] uppercase tracking-tighter">{t("certificate.verifiedLead")}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--muted)]">{t("certificate.status")}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--success-text)]">{t("certificate.verifiedLead")}</p>
             </div>
           </div>
         </div>
@@ -223,7 +228,7 @@ function ActionBar({ session }: ActionBarProps) {
         type="button"
         onClick={handleDownloadPDF}
         disabled={downloading}
-        className="flex flex-row items-center gap-2 px-6 py-3 text-xl font-bold transition-transform hover:scale-105 glass-panel pixel-border bg-[var(--accent)] text-[var(--foreground)] hover:brightness-110"
+        className="apple-pill"
         style={{
           opacity: downloading ? 0.7 : 1,
           cursor: downloading ? "not-allowed" : "pointer",
@@ -241,7 +246,7 @@ function ActionBar({ session }: ActionBarProps) {
       <button
         type="button"
         onClick={handleShare}
-        className="flex flex-row items-center gap-2 px-6 py-3 text-xl font-bold transition-transform hover:scale-105 glass-panel pixel-border bg-[var(--primary)] text-white hover:bg-[var(--primary-text)]"
+        className="apple-pill-secondary"
       >
         {copying ? t("certificate.linkCopied") : t("certificate.share")}
       </button>
@@ -255,18 +260,18 @@ function IncompletePage({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
-      <div className="mb-6 flex h-24 w-24 items-center justify-center bg-[var(--error)] text-white text-5xl font-bold pixel-border">
-        !
+      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-[var(--surface-parchment)] text-[var(--error)]">
+        <WarningCircle size={34} weight="duotone" />
       </div>
-      <h1 className="mb-4 text-4xl font-extrabold text-[var(--foreground)] pixel-text-strong">
+      <h1 className="mb-4 text-4xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">
         {t("certificate.notReady")}
       </h1>
-      <p className="mb-8 max-w-sm text-lg leading-relaxed text-[var(--muted)] pixel-text">
+      <p className="mb-8 max-w-sm text-lg leading-relaxed text-[var(--muted)]">
         {t("certificate.notReadyDesc")}
       </p>
       <Link
         href={`/learn/${sessionId}`}
-        className="flex items-center gap-2 px-6 py-4 text-xl font-bold transition-transform hover:scale-105 glass-panel pixel-border bg-[var(--primary)] text-white hover:bg-[var(--primary-light)]"
+        className="apple-pill"
       >
         {t("certificate.continueLearning")}
       </Link>
@@ -280,13 +285,13 @@ function NotFoundPage() {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
-      <h1 className="mb-4 text-4xl font-extrabold text-[var(--foreground)] pixel-text-strong">
+      <h1 className="mb-4 text-4xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">
         {t("certificate.sessionNotFound")}
       </h1>
-      <p className="mb-8 text-lg text-[var(--muted)] pixel-text">
+      <p className="mb-8 text-lg text-[var(--muted)]">
         {t("certificate.sessionNotFoundDesc")}
       </p>
-      <Link href="/my-learnings" className="text-xl font-bold text-[var(--primary-text)] hover:underline pixel-text">
+      <Link href="/my-learnings" className="text-lg font-medium text-[var(--primary-text)] hover:underline">
         {t("certificate.backToMyLearnings")}
       </Link>
     </div>
@@ -342,7 +347,7 @@ export default function CertificatePage({ params }: PageProps) {
         <div className="mb-10 animate-fade-in text-center flex flex-col items-center">
           <Link
             href="/my-learnings"
-            className="mb-8 inline-flex items-center gap-2 text-lg font-bold transition-transform hover:scale-105 glass-panel pixel-border px-4 py-2 hover:bg-[var(--primary)] hover:text-white text-[var(--foreground)]"
+            className="mb-8 inline-flex items-center gap-2 rounded-full border border-[var(--hairline)] bg-white px-4 py-2 text-sm font-medium text-[var(--foreground)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
           >
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
               <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />
@@ -351,14 +356,14 @@ export default function CertificatePage({ params }: PageProps) {
           </Link>
 
           <div>
-            <div className="mb-4 inline-flex items-center px-4 py-2 text-lg font-bold bg-[var(--success)] text-white pixel-border animate-pulse shadow-md">
+            <div className="mb-4 inline-flex items-center rounded-full bg-[var(--success)] px-4 py-2 text-sm font-semibold text-white">
               {t("certificate.courseCompleted")}
             </div>
 
-            <h1 className="text-4xl font-extrabold sm:text-5xl pixel-text-strong tracking-wide text-[var(--foreground)]">
+            <h1 className="text-4xl font-semibold tracking-[-0.05em] text-[var(--foreground)] sm:text-5xl">
               {t("certificate.title")}
             </h1>
-            <p className="mt-4 text-xl pixel-text text-[var(--muted)] font-medium">
+            <p className="mt-4 text-xl font-medium text-[var(--muted)]">
               {t("certificate.congratulations", { name: session.userName })}
             </p>
           </div>
@@ -373,7 +378,7 @@ export default function CertificatePage({ params }: PageProps) {
         <ActionBar session={session} />
 
         {/* Footer note */}
-        <p className="mt-12 text-center text-lg text-[var(--muted)] pixel-text border-t-4 border-dashed border-[var(--border)] pt-8">
+        <p className="mt-12 border-t border-[var(--hairline)] pt-8 text-center text-lg text-[var(--muted)]">
           {t("certificate.shareOrDownload")}
         </p>
 

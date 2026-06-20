@@ -120,7 +120,8 @@ async function buildRecommendations(queries: string[]): Promise<YouTubeRecommend
     const searchItems = await fetchSearchResults(query, apiKey);
     const videoIds = searchItems
       .map((item) => item.id?.videoId)
-      .filter((videoId): videoId is string => Boolean(videoId) && !seenVideoIds.has(videoId));
+      .filter((videoId): videoId is string => typeof videoId === "string" && videoId.length > 0)
+      .filter((videoId) => !seenVideoIds.has(videoId));
 
     const detailedItems = await fetchVideoDetails(videoIds, apiKey);
     for (const item of detailedItems) {

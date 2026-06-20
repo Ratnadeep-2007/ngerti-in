@@ -1,74 +1,70 @@
 "use client";
 
 import React, { useState } from "react";
+import {
+  Info,
+  Translate,
+  YoutubeLogo,
+  Lightning,
+  BracketsCurly,
+  Palette,
+  RocketLaunch,
+} from "@phosphor-icons/react";
 import { useTranslation } from "@/contexts/UILanguageContext";
+
+const credits = [
+  { title: "Lingo.dev", descKey: "footer.magic", icon: Translate },
+  { title: "YouTube", descKey: "footer.library", icon: YoutubeLogo },
+  { title: "Gemini", descKey: "footer.inference", icon: Lightning },
+  { title: "DeepMind", descKey: "footer.vibes", icon: BracketsCurly },
+  { title: "Design", descKey: "footer.collaborators", icon: Palette },
+  { title: "Vercel", descKey: "footer.delivery", icon: RocketLaunch },
+] as const;
 
 const Footer = () => {
   const { t } = useTranslation();
   const [showCredits, setShowCredits] = useState(false);
 
   return (
-    <footer className="relative mt-20 pb-10 px-4 z-10">
-      <div className="max-w-4xl mx-auto flex flex-col items-center gap-6">
-        {/* Built By Section */}
-        <div className="glass-panel pixel-border px-8 py-4 text-center transform hover:scale-105 transition-transform">
-          <p className="text-lg font-bold pixel-text text-[var(--foreground)]">
-            {t("footer.builtBy")}
-          </p>
-          <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>
-            {t("footer.poweredBy")}
-          </p>
+    <footer className="relative border-t border-[var(--hairline)] bg-[var(--surface-parchment)] px-4 py-8 text-[var(--foreground)]">
+      <div className="mx-auto flex max-w-5xl flex-col gap-5">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <p className="text-base font-semibold tracking-[-0.03em]">
+              {t("footer.builtBy")}
+            </p>
+            <p className="mt-1 max-w-xl text-xs leading-5 text-[var(--muted)]">
+              {t("footer.poweredBy")}
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowCredits(!showCredits)}
+            className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--hairline)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--foreground)] hover:border-[var(--primary)] hover:text-[var(--primary)]"
+          >
+            <Info size={16} weight="duotone" />
+            {t("footer.credits")}
+          </button>
         </div>
 
-        {/* Credits Button */}
-        <button
-          onClick={() => setShowCredits(!showCredits)}
-          className="text-sm font-bold opacity-60 hover:opacity-100 hover:text-[var(--primary-light)] transition-all pixel-text"
-        >
-          {t("footer.credits")}
-        </button>
-
-        {/* Expandable Credits Panel */}
         {showCredits && (
-          <div className="glass-panel pixel-border p-8 animate-slide-up w-full max-w-2xl bg-[var(--surface)]">
-            <h4 className="text-xl font-black mb-6 text-center tracking-tighter text-[var(--foreground)] pixel-text-strong">
+          <div className="animate-slide-up rounded-[24px] border border-[var(--hairline)] bg-white p-4">
+            <h4 className="mb-3 text-base font-semibold tracking-[-0.035em]">
               {t("footer.specialThanks")}
             </h4>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <CreditItem
-                title="Lingo.dev"
-                desc={t("footer.magic")}
-                icon="🪄"
-              />
-              <CreditItem
-                title="YouTube"
-                desc={t("footer.library")}
-                icon="📺"
-              />
-              <CreditItem
-                title="Gemini"
-                desc={t("footer.inference")}
-                icon="⚡"
-              />
-              <CreditItem
-                title="DeepMind"
-                desc={t("footer.vibes")}
-                icon="🧞"
-              />
-              <CreditItem
-                title={t("footer.designs")}
-                desc={t("footer.collaborators")}
-                icon="⚔️"
-              />
-              <CreditItem
-                title="Vercel"
-                desc={t("footer.delivery")}
-                icon="🔼"
-              />
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              {credits.map((credit) => (
+                <CreditItem
+                  key={credit.title}
+                  title={credit.title}
+                  desc={t(credit.descKey)}
+                  icon={credit.icon}
+                />
+              ))}
             </div>
 
-            <div className="mt-8 pt-6 border-t border-[var(--border)] text-center italic text-sm text-[var(--muted)] pixel-text">
+            <div className="mt-4 border-t border-[var(--hairline)] pt-3 text-xs text-[var(--muted)]">
               {t("footer.madeWithLove")}
             </div>
           </div>
@@ -85,15 +81,17 @@ const CreditItem = ({
 }: {
   title: string;
   desc: string;
-  icon: string;
+  icon: React.ComponentType<{ size?: number; weight?: "duotone" | "regular" | "bold" | "fill" | "light" | "thin" }>;
 }) => (
-  <div className="flex items-start gap-3 p-3 bg-[var(--surface-light)] pixel-border hover:bg-[var(--primary)] group transition-colors">
-    <span className="text-xl">{icon}</span>
+  <div className="flex items-start gap-2 rounded-2xl bg-[var(--surface-parchment)] p-3">
+    <span className="mt-0.5 text-[var(--primary)]">
+      {React.createElement(icon, { size: 18, weight: "duotone" })}
+    </span>
     <div>
-      <h5 className="font-bold text-sm text-[var(--foreground)] group-hover:text-white transition-colors">
+      <h5 className="text-xs font-semibold text-[var(--foreground)]">
         {title}
       </h5>
-      <p className="text-[10px] leading-tight opacity-70 text-[var(--foreground)] group-hover:text-white transition-colors">
+      <p className="mt-1 text-[11px] leading-4 text-[var(--muted)]">
         {desc}
       </p>
     </div>

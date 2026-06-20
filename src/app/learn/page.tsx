@@ -3,6 +3,15 @@
 import { useState, useCallback, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import {
+  GameController,
+  Crosshair,
+  Translate,
+  Lightning,
+  Certificate,
+  ChartLineUp,
+} from "@phosphor-icons/react";
+import type { ReactNode } from "react";
 import { COMPANIONS } from "@/lib/companions";
 import { getAllLanguages } from "@/lib/languages";
 import type { LearningMode, QuizDifficulty } from "@/lib/types";
@@ -17,13 +26,6 @@ import { createSession } from "@/lib/session";
 import LanguageSelector from "@/components/ui/LanguageSelector";
 import ProcessingSteps from "@/components/ui/ProcessingSteps";
 import { useTranslation } from "@/contexts/UILanguageContext";
-
-const COMPANION_EMOJIS: Record<string, string> = {
-  fox: "🦊",
-  owl: "🦉",
-  cat: "🐱",
-  robot: "🤖",
-};
 
 const DEFAULT_LANGUAGE = "en-US";
 
@@ -204,12 +206,15 @@ function HomePageInner() {
   return (
     <>
       <div
-        className={`relative min-h-screen overflow-x-hidden ${mode === 'focus' ? 'focus-mode-static' : ''}`}
+        className={`relative min-h-screen overflow-x-hidden bg-[var(--background)] ${mode === "focus" ? "focus-mode-static" : ""}`}
       >
-        <main className="relative z-10 mx-auto max-w-3xl px-4 py-16 sm:py-24">
+        <main className="relative z-10 mx-auto max-w-4xl px-4 py-16 sm:py-24">
           {/* Hero */}
           <section className="animate-fade-in mb-12 text-center">
-            <h1 className="text-6xl font-extrabold tracking-tight sm:text-7xl pixel-text mb-6">
+            <p className="mb-4 text-sm font-semibold tracking-[0.24em] text-[var(--primary)]">
+              SESSION BUILDER
+            </p>
+            <h1 className="apple-headline mb-6">
               <span
                 style={{
                   color: "var(--foreground)",
@@ -220,15 +225,15 @@ function HomePageInner() {
             </h1>
 
             <p
-              className="mt-4 text-xl sm:text-2xl font-medium pixel-text"
+              className="apple-lead mx-auto mt-4 max-w-2xl"
               style={{ color: "var(--foreground)" }}
             >
               {t("home.tagline")}
             </p>
 
             <p
-              className="mt-4 text-lg max-w-sm mx-auto leading-relaxed pixel-text"
-              style={{ color: "var(--foreground)", background: "rgba(255,255,255,0.7)", padding: "8px", border: "2px solid var(--border)" }}
+              className="mx-auto mt-4 max-w-2xl text-[17px] leading-[1.47]"
+              style={{ color: "var(--muted)" }}
             >
               {t("home.learnPageHeroDesc")}
             </p>
@@ -236,7 +241,7 @@ function HomePageInner() {
 
           {/* Card */}
           <div
-            className="animate-slide-up p-6 sm:p-8 space-y-6 glass-panel pixel-border"
+            className="animate-slide-up space-y-6 rounded-[32px] border border-[var(--border)] bg-white/78 p-6 shadow-[var(--glass-edge)] backdrop-blur-2xl sm:p-8"
           >
             {/* URL Input */}
             <div>
@@ -253,7 +258,7 @@ function HomePageInner() {
                   onChange={(e) => setUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleStart()}
                   placeholder="https://youtube.com/watch?v=..."
-                  className="w-full py-3 pl-4 pr-12 text-lg outline-none transition-all pixel-border"
+                  className="w-full rounded-[18px] border border-[var(--border)] bg-white px-4 py-3 pl-4 pr-12 text-[17px] outline-none transition-all focus:border-[var(--primary)]"
                   style={{
                     background: "var(--surface-light)",
                     color: "var(--foreground)",
@@ -274,7 +279,7 @@ function HomePageInner() {
                   style={{ color: "var(--muted)" }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.color = "var(--primary-light)";
-                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(108, 92, 231, 0.1)";
+                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(0, 102, 204, 0.08)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
@@ -305,7 +310,7 @@ function HomePageInner() {
               <button
                 type="button"
                 onClick={() => setShowLangSelector(true)}
-                className="flex w-full items-center justify-between px-4 py-3 text-lg transition-all pixel-border"
+                className="flex w-full items-center justify-between rounded-[18px] border border-[var(--border)] px-4 py-3 text-[17px] transition-all"
                 style={{
                   background: "var(--surface-light)",
                   color: "var(--foreground)",
@@ -319,7 +324,7 @@ function HomePageInner() {
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className="flex h-8 w-8 items-center justify-center text-sm font-bold pixel-border"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"
                     style={{
                       background: "var(--primary)",
                       color: "white",
@@ -356,14 +361,13 @@ function HomePageInner() {
                 {t("home.learningMode")}
               </label>
               <div
-                className="grid grid-cols-2 gap-2 p-1 pixel-border"
-                style={{ background: "var(--surface-light)" }}
+                className="grid grid-cols-2 gap-2 rounded-[22px] border border-[var(--border)] bg-[var(--surface-light)] p-1"
               >
-                <ModeButton
+              <ModeButton
                   value="jolly"
                   current={mode}
                   onClick={() => setMode("jolly")}
-                  icon="🎮"
+                  icon={<GameController size={22} weight="duotone" />}
                   label={t("home.modeJolly")}
                   description={t("home.modeJollyDesc")}
                 />
@@ -371,7 +375,7 @@ function HomePageInner() {
                   value="focus"
                   current={mode}
                   onClick={() => setMode("focus")}
-                  icon="🎯"
+                  icon={<Crosshair size={22} weight="duotone" />}
                   label={t("home.modeFocus")}
                   description={t("home.modeFocusDesc")}
                 />
@@ -459,12 +463,12 @@ function HomePageInner() {
 
                 {/* Selected Character Detail Card */}
                 <div 
-                  className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 items-center pixel-border transition-colors duration-500"
+                  className="grid grid-cols-1 items-center gap-4 rounded-[24px] border border-[var(--border)] p-4 transition-colors duration-500 sm:grid-cols-3"
                   style={{
                     background: "var(--surface)",
                   }}
                 >
-                  <div className="col-span-1 flex justify-center items-center p-2 h-40 pixel-border transition-colors duration-500" style={{ background: "var(--surface-light)" }}>
+                  <div className="col-span-1 flex h-40 items-center justify-center rounded-[20px] border border-[var(--border)] p-2 transition-colors duration-500" style={{ background: "var(--surface-light)" }}>
                     <img 
                       src={selectedCompanion.idleGif} 
                       alt={selectedCompanion.name} 
@@ -498,7 +502,7 @@ function HomePageInner() {
                 onChange={(e) => setUserName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleStart()}
                 placeholder={t("home.namePlaceholder")}
-                className="w-full py-3 px-4 text-lg outline-none transition-all pixel-border"
+                className="w-full rounded-[18px] border border-[var(--border)] bg-white px-4 py-3 text-[17px] outline-none transition-all focus:border-[var(--primary)]"
                 style={{
                   background: "var(--surface-light)",
                   color: "var(--foreground)",
@@ -518,7 +522,7 @@ function HomePageInner() {
               type="button"
               onClick={handleStart}
               disabled={!canStart}
-              className="relative w-full overflow-hidden py-4 text-xl font-bold transition-all duration-200 pixel-border"
+              className="relative w-full overflow-hidden rounded-full py-4 text-[17px] font-medium transition-all duration-200"
               style={{
                 background: canStart
                   ? "var(--primary)"
@@ -530,14 +534,14 @@ function HomePageInner() {
                 if (canStart) {
                   (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)";
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    "4px 6px 0px rgba(0, 0, 0, 0.3)";
+                    "0 12px 28px rgba(0, 102, 204, 0.18)";
                 }
               }}
               onMouseLeave={(e) => {
                 if (canStart) {
                   (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)";
                   (e.currentTarget as HTMLButtonElement).style.boxShadow =
-                    "2px 2px 0px rgba(0, 0, 0, 0.3)";
+                    "none";
                 }
               }}
             >
@@ -588,10 +592,10 @@ function HomePageInner() {
           {/* Feature pills */}
           <div className="mt-10 flex flex-wrap justify-center gap-3 animate-fade-in">
             {[
-              { icon: "🌍", text: t("home.feature130") },
-              { icon: "⚡", text: t("home.pillGroqAI", { defaultValue: "Groq AI" }) },
-              { icon: "🎓", text: t("home.pillCertificate") },
-              { icon: "📊", text: t("home.pillProgress") },
+              { icon: <Translate size={16} weight="duotone" />, text: t("home.feature130") },
+              { icon: <Lightning size={16} weight="duotone" />, text: t("home.pillGroqAI", { defaultValue: "Groq AI" }) },
+              { icon: <Certificate size={16} weight="duotone" />, text: t("home.pillCertificate") },
+              { icon: <ChartLineUp size={16} weight="duotone" />, text: t("home.pillProgress") },
             ].map((f) => (
               <div
                 key={f.text}
@@ -637,7 +641,7 @@ interface ModeButtonProps {
   value: LearningMode;
   current: LearningMode;
   onClick: () => void;
-  icon: string;
+  icon: ReactNode;
   label: string;
   description: string;
 }
@@ -648,17 +652,17 @@ function ModeButton({ value, current, onClick, icon, label, description }: ModeB
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-start gap-0.5 rounded-lg px-4 py-3 text-left transition-all"
+      className="flex flex-col items-start gap-0.5 rounded-[18px] px-4 py-3 text-left transition-all"
       style={{
-        background: isSelected ? "var(--surface)" : "transparent",
+        background: isSelected ? "var(--surface-solid)" : "transparent",
         color: "var(--foreground)",
-        boxShadow: isSelected ? "0 1px 8px rgba(0,0,0,0.3), 0 0 0 1px rgba(108,92,231,0.2)" : "none",
+        boxShadow: isSelected ? "inset 0 0 0 1px rgba(0,102,204,0.22)" : "none",
       }}
     >
       <div className="flex items-center gap-2">
-        <span className="text-xl leading-none">{icon}</span>
+        <span className="leading-none">{icon}</span>
         <span
-          className="text-lg font-bold"
+          className="text-[17px] font-semibold"
           style={{ color: isSelected ? "var(--primary)" : "var(--muted)" }}
         >
           {label}
@@ -697,12 +701,12 @@ function DifficultyButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-start gap-1 rounded-lg px-4 py-3 text-left transition-all pixel-border"
+      className="flex flex-col items-start gap-1 rounded-[18px] border px-4 py-3 text-left transition-all"
       style={{
-        background: isSelected ? "var(--surface)" : "var(--surface-light)",
+        background: isSelected ? "var(--surface-solid)" : "var(--surface-light)",
         color: "var(--foreground)",
         borderColor: isSelected ? "var(--primary)" : "var(--border)",
-        boxShadow: isSelected ? "0 0 0 1px rgba(108,92,231,0.2)" : "none",
+        boxShadow: "none",
       }}
     >
       <div className="flex items-center gap-2">
@@ -715,7 +719,7 @@ function DifficultyButton({
         {isSelected && (
           <span
             className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
-            style={{ background: "rgba(108,92,231,0.12)", color: "var(--primary)" }}
+            style={{ background: "rgba(0,102,204,0.1)", color: "var(--primary)" }}
           >
             Selected
           </span>

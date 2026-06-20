@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import {
+  Certificate,
+  Crosshair,
+  GameController,
+  GlobeHemisphereWest,
+  NotePencil,
+} from "@phosphor-icons/react";
 
 import VideoPlayer, { type VideoPlayerHandle } from "@/components/video-player/VideoPlayer";
 import QuizPopup, { type QuizResult } from "@/components/quiz/QuizPopup";
@@ -1169,7 +1176,12 @@ export default function LearnSessionPage() {
                   }`,
                 }}
               >
-                {session.mode === "jolly" ? "🎉 Jolly" : "🎯 Focus"}
+                {session.mode === "jolly" ? (
+                  <GameController size={14} weight="duotone" />
+                ) : (
+                  <Crosshair size={14} weight="duotone" />
+                )}
+                {session.mode === "jolly" ? "Jolly" : "Focus"}
               </span>
 
               {companion && (
@@ -1183,7 +1195,7 @@ export default function LearnSessionPage() {
             {/* Right: language switcher + metadata */}
             <div className="flex items-center gap-4 text-xs text-muted shrink-0">
               <span className="flex items-center gap-1.5">
-                <span aria-hidden="true">🌐</span>
+                <GlobeHemisphereWest aria-hidden="true" size={14} weight="duotone" />
                 <span>{session.sourceLocale.toUpperCase()}</span>
                 <span aria-hidden="true">→</span>
                 <select
@@ -1376,7 +1388,7 @@ export default function LearnSessionPage() {
                   boxShadow: "0 0 32px rgba(108,92,231,0.15)",
                 }}
               >
-                📝
+                <NotePencil size={30} weight="duotone" className="text-[var(--primary-light)]" />
               </div>
               <div className="flex flex-col gap-1">
                 <h2 className="text-lg font-bold" style={{ color: "var(--primary-light)" }}>
@@ -1442,7 +1454,7 @@ export default function LearnSessionPage() {
                   boxShadow: "0 0 32px rgba(0,184,148,0.15)",
                 }}
               >
-                🎓
+                <Certificate size={30} weight="duotone" className="text-[var(--success)]" />
               </div>
               <div className="flex flex-col gap-1">
                 <h2 className="text-lg font-bold text-success">

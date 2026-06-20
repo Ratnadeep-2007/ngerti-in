@@ -103,6 +103,13 @@ export interface FocusMetricSample {
   headZ: number;
   eyeFocus: number;
   postureShift: number;
+  poseYaw?: number;
+  posePitch?: number;
+  poseRoll?: number;
+  gazeOffsetX?: number;
+  gazeOffsetY?: number;
+  motionEnergy?: number;
+  faceScale?: number;
 }
 
 export interface FocusEvaluation {
@@ -117,6 +124,7 @@ export interface FocusEvaluation {
   fidgetingVariance: number;
   gazeWanderingRatio: number;
   bodyMovementVariance: number;
+  attentionScore?: number;
   groqEvaluation?: FaceTrackingGroqEvaluation;
 }
 

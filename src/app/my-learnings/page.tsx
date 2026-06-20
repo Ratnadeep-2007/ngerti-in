@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Play, X, Trash, Student } from "@phosphor-icons/react";
 import { useTranslation } from "@/contexts/UILanguageContext";
 import type { Session } from "@/lib/types";
 
@@ -39,12 +40,12 @@ export default function MyLearningsPage() {
   const completed = sessions.filter((s) => s.status === "completed");
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-12 animate-fade-in relative z-10">
+    <div className="relative z-10 mx-auto max-w-6xl px-4 py-12 animate-fade-in">
       <div className="mb-10 text-center">
-        <h1 className="text-4xl font-black pixel-text-strong text-[var(--foreground)] mb-2">
+        <h1 className="apple-headline mb-2">
           {t("myLearnings.title")}
         </h1>
-        <p className="text-sm pixel-text text-[var(--foreground)] opacity-80">
+        <p className="text-sm text-[var(--muted)]">
           {t("myLearnings.subtitle")}
         </p>
       </div>
@@ -53,20 +54,20 @@ export default function MyLearningsPage() {
       <div className="flex gap-2 mb-8 justify-center">
         <button
           onClick={() => setActiveTab("ongoing")}
-          className={`px-6 py-2 font-bold pixel-border transition-all ${
+          className={`rounded-full px-6 py-2 text-sm font-medium transition-all ${
             activeTab === "ongoing"
-              ? "bg-[var(--primary)] text-white translate-y-[-2px] shadow-[0_4px_0_var(--primary-dark)]"
-              : "glass-panel text-[var(--foreground)] hover:bg-[var(--surface-light)]"
+              ? "bg-[var(--primary)] text-white"
+              : "border border-[var(--border)] bg-white text-[var(--foreground)] hover:border-[var(--primary)]"
           }`}
         >
           {t("myLearnings.tabOngoing")} ({ongoing.length})
         </button>
         <button
           onClick={() => setActiveTab("completed")}
-          className={`px-6 py-2 font-bold pixel-border transition-all ${
+          className={`rounded-full px-6 py-2 text-sm font-medium transition-all ${
             activeTab === "completed"
-              ? "bg-[var(--success)] text-white translate-y-[-2px] shadow-[0_4px_0_var(--success-dark)]"
-              : "glass-panel text-[var(--foreground)] hover:bg-[var(--surface-light)]"
+              ? "bg-[var(--primary)] text-white"
+              : "border border-[var(--border)] bg-white text-[var(--foreground)] hover:border-[var(--primary)]"
           }`}
         >
           {t("myLearnings.tabCompleted")} ({completed.length})
@@ -138,12 +139,12 @@ function SessionCard({
   const total = session.progress.breakpointsCleared.length;
 
   return (
-    <div className="glass-panel pixel-border p-4 flex flex-col group animate-slide-up relative overflow-hidden group">
+    <div className="group relative flex flex-col overflow-hidden rounded-[28px] border border-[var(--border)] bg-white p-4 animate-slide-up">
       {/* Background decoration */}
       <div className="absolute top-0 right-0 w-16 h-16 bg-[var(--primary)] opacity-[0.03] rounded-bl-full pointer-events-none group-hover:opacity-[0.06] transition-opacity" />
 
       {/* Hero Icon */}
-      <div className="relative h-40 bg-[var(--surface)] pixel-border mb-4 overflow-hidden group">
+      <div className="group relative mb-4 h-40 overflow-hidden rounded-[22px] bg-[var(--surface)]">
         <img
           src={session.metadata.thumbnail}
           alt={session.metadata.title}
@@ -152,21 +153,21 @@ function SessionCard({
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)] to-transparent opacity-60" />
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-            <span className="text-xl ml-1">▶️</span>
+            <Play size={26} weight="fill" className="ml-1 text-[var(--primary)]" />
           </div>
         </div>
 
         {/* Status Badge */}
         <div className="absolute top-2 left-2 flex gap-1">
-          <span className="bg-black/60 backdrop-blur-md text-white text-[10px] px-2 py-0.5 pixel-border font-bold uppercase tracking-wider">
+          <span className="rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white backdrop-blur-md">
             {session.targetLocale}
           </span>
           {session.status === "completed" ? (
-            <span className="bg-[var(--success)] text-white text-[10px] px-2 py-0.5 pixel-border font-bold uppercase">
+            <span className="rounded-full bg-[var(--success)] px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
               {t("myLearnings.statusCompleted")}
             </span>
           ) : (
-            <span className="bg-[var(--warning)] text-white text-[10px] px-2 py-0.5 pixel-border font-bold uppercase">
+            <span className="rounded-full bg-[var(--warning)] px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
               {t("myLearnings.statusOngoing")}
             </span>
           )}
@@ -174,7 +175,7 @@ function SessionCard({
       </div>
 
       <div className="flex-1 space-y-3">
-        <h3 className="font-bold text-lg line-clamp-2 pixel-text text-[var(--foreground)] leading-tight">
+        <h3 className="line-clamp-2 text-lg font-semibold leading-tight text-[var(--foreground)]">
           {session.metadata.title}
         </h3>
 
@@ -183,7 +184,7 @@ function SessionCard({
             <span>{t("myLearnings.checkpoints", { cleared, total })}</span>
             <span>{Math.round((cleared / (total || 1)) * 100)}%</span>
           </div>
-          <div className="h-2 bg-[var(--surface-light)] pixel-border overflow-hidden p-[1px]">
+          <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-light)]">
             <div
               className={`h-full transition-all duration-500 ${
                 session.status === "completed" ? "bg-[var(--success)]" : "bg-[var(--primary)]"
@@ -196,7 +197,7 @@ function SessionCard({
         <div className="pt-2 flex gap-2">
           <button
             onClick={onAction}
-            className={`flex-1 py-2 font-bold pixel-border transition-all active:translate-y-[1px] ${
+            className={`flex-1 rounded-full py-2 text-sm font-medium transition-all ${
               session.status === "completed"
                 ? "bg-[var(--success)] text-white hover:bg-[var(--success-dark)]"
                 : "bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)]"
@@ -209,24 +210,24 @@ function SessionCard({
             <div className="flex gap-1 animate-in slide-in-from-right-2 duration-200">
               <button
                 onClick={onDelete}
-                className="bg-[var(--error)] text-white px-3 py-2 text-xs font-bold pixel-border"
+                className="rounded-full bg-[var(--error)] px-3 py-2 text-xs font-semibold text-white"
               >
                 {t("myLearnings.delete")}
               </button>
               <button
                 onClick={() => setShowConfirm(false)}
-                className="bg-[var(--surface-light)] text-[var(--foreground)] px-2 py-2 text-xs font-bold pixel-border"
+                className="rounded-full bg-[var(--surface-light)] px-2 py-2 text-xs font-semibold text-[var(--foreground)]"
               >
-                ✕
+                <X size={16} weight="bold" />
               </button>
             </div>
           ) : (
             <button
               onClick={() => setShowConfirm(true)}
-              className="bg-[var(--surface-light)] text-[var(--foreground)] px-3 py-2 text-xs font-bold pixel-border hover:bg-[var(--error)] hover:text-white transition-colors"
+              className="rounded-full bg-[var(--surface-light)] px-3 py-2 text-xs font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--error)] hover:text-white"
               title={t("myLearnings.delete")}
             >
-              🗑️
+              <Trash size={17} weight="bold" />
             </button>
           )}
         </div>
@@ -247,15 +248,17 @@ function EmptyState({
   actionLabel: string;
 }) {
   return (
-    <div className="glass-panel pixel-border p-12 text-center max-w-lg mx-auto animate-slide-up">
-      <div className="text-6xl mb-6">🏜️</div>
-      <h2 className="text-2xl font-black pixel-text-strong text-[var(--foreground)] mb-2">
+    <div className="mx-auto max-w-lg rounded-[30px] border border-[var(--border)] bg-white p-12 text-center animate-slide-up">
+      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--surface-parchment)] text-[var(--primary)]">
+        <Student size={32} weight="duotone" />
+      </div>
+      <h2 className="mb-2 text-2xl font-semibold tracking-[-0.04em] text-[var(--foreground)]">
         {title}
       </h2>
-      <p className="text-[var(--muted)] mb-8 pixel-text">{description}</p>
+      <p className="mb-8 text-[var(--muted)]">{description}</p>
       <button
         onClick={onAction}
-        className="px-8 py-3 bg-[var(--primary)] text-white font-bold pixel-border hover:scale-105 transition-transform"
+        className="rounded-full bg-[var(--primary)] px-8 py-3 text-sm font-medium text-white transition-transform hover:bg-[var(--primary-light)]"
       >
         {actionLabel}
       </button>

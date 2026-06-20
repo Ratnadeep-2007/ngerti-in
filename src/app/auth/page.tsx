@@ -1,6 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import {
+  StudentIcon,
+  ChalkboardTeacherIcon,
+} from "@phosphor-icons/react";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -54,28 +58,28 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 py-8 space-y-8 animate-slide-up relative z-10">
+    <div className="relative z-10 mx-auto max-w-md space-y-8 px-4 py-8 animate-slide-up">
       
       {/* Title block */}
       <div className="text-center space-y-2">
-        <h1 className="text-5xl font-extrabold tracking-tight pixel-text-strong">
+        <h1 className="apple-headline">
           Lumina.ai
         </h1>
-        <p className="text-sm font-bold uppercase tracking-widest text-[var(--primary-light)]">
+        <p className="text-sm font-semibold tracking-[0.2em] text-[var(--primary)]">
           Active Validation Control Panel
         </p>
       </div>
 
       {/* Auth Card wrapper */}
-      <div className="glass-panel pixel-border p-8 rounded-xl space-y-6">
+      <div className="space-y-6 rounded-[32px] border border-[var(--border)] bg-white/82 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur-2xl">
         
         {/* Tab switchers */}
-        <div className="flex border-b border-border p-1 bg-[var(--surface-light)] pixel-border mb-4">
+        <div className="mb-4 flex rounded-full border border-[var(--border)] bg-[var(--surface-light)] p-1">
           <button
             onClick={() => setIsLoginTab(true)}
-            className={`flex-1 py-2 font-bold text-sm pixel-border transition-all ${
+            className={`flex-1 rounded-full py-2 text-sm font-medium transition-all ${
               isLoginTab
-                ? "bg-[var(--primary)] text-white shadow-[0_3px_0_var(--primary-dark)]"
+                ? "bg-[var(--primary)] text-white"
                 : "text-[var(--foreground)] opacity-75 hover:opacity-100"
             }`}
           >
@@ -83,9 +87,9 @@ export default function AuthPage() {
           </button>
           <button
             onClick={() => setIsLoginTab(false)}
-            className={`flex-1 py-2 font-bold text-sm pixel-border transition-all ${
+            className={`flex-1 rounded-full py-2 text-sm font-medium transition-all ${
               !isLoginTab
-                ? "bg-[var(--primary)] text-white shadow-[0_3px_0_var(--primary-dark)]"
+                ? "bg-[var(--primary)] text-white"
                 : "text-[var(--foreground)] opacity-75 hover:opacity-100"
             }`}
           >
@@ -105,7 +109,7 @@ export default function AuthPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. Teacher Ratnadeep"
-                className="w-full bg-[var(--surface)] text-[var(--foreground)] border border-border p-2.5 outline-none focus:border-[var(--primary)] pixel-border text-sm"
+                className="w-full rounded-[18px] border border-[var(--border)] bg-white p-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
               />
             </div>
           )}
@@ -119,7 +123,7 @@ export default function AuthPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@domain.com"
-              className="w-full bg-[var(--surface)] text-[var(--foreground)] border border-border p-2.5 outline-none focus:border-[var(--primary)] pixel-border text-sm"
+              className="w-full rounded-[18px] border border-[var(--border)] bg-white p-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
             />
           </div>
 
@@ -132,7 +136,7 @@ export default function AuthPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-[var(--surface)] text-[var(--foreground)] border border-border p-2.5 outline-none focus:border-[var(--primary)] pixel-border text-sm"
+              className="w-full rounded-[18px] border border-[var(--border)] bg-white p-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
             />
           </div>
 
@@ -145,25 +149,25 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => setSelectedRole("student")}
-                className={`p-3 text-center pixel-border flex flex-col items-center justify-center gap-1 transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 rounded-[20px] border p-3 text-center transition-all ${
                   selectedRole === "student"
-                    ? "bg-[var(--primary)] border-[var(--primary)] text-white shadow-[0_4px_0_var(--primary-dark)] translate-y-[-2px]"
+                    ? "border-[var(--primary)] bg-[var(--primary)] text-white"
                     : "bg-[var(--surface-light)] border-border hover:bg-[var(--surface)] text-[var(--foreground)]"
                 }`}
               >
-                <span className="text-xl">🎓</span>
-                <span className="text-xs font-bold">Student Role</span>
+              <StudentIcon size={22} weight="duotone" />
+              <span className="text-xs font-bold">Student Role</span>
               </button>
               <button
                 type="button"
                 onClick={() => setSelectedRole("teacher")}
-                className={`p-3 text-center pixel-border flex flex-col items-center justify-center gap-1 transition-all ${
+                className={`flex flex-col items-center justify-center gap-1 rounded-[20px] border p-3 text-center transition-all ${
                   selectedRole === "teacher"
-                    ? "bg-[var(--primary)] border-[var(--primary)] text-white shadow-[0_4px_0_var(--primary-dark)] translate-y-[-2px]"
+                    ? "border-[var(--primary)] bg-[var(--primary)] text-white"
                     : "bg-[var(--surface-light)] border-border hover:bg-[var(--surface)] text-[var(--foreground)]"
                 }`}
               >
-                <span className="text-xl">👨‍🏫</span>
+                <ChalkboardTeacherIcon size={22} weight="duotone" />
                 <span className="text-xs font-bold">Teacher Role</span>
               </button>
             </div>
@@ -172,9 +176,13 @@ export default function AuthPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-extrabold text-sm py-3.5 pixel-border transition-all active:translate-y-[1px] disabled:opacity-50 mt-4"
+            className="mt-4 w-full rounded-full bg-[var(--primary)] py-3.5 text-sm font-medium text-white transition-all hover:bg-[var(--primary-light)] disabled:opacity-50"
           >
-            {loading ? "Authenticating..." : isLoginTab ? "Access Sandbox" : "Create & Access"}
+            <span className="inline-flex items-center justify-center gap-2">
+              {!loading && isLoginTab && <span className="hidden sm:inline-flex"><StudentIcon size={16} weight="duotone" /></span>}
+              {!loading && !isLoginTab && <span className="hidden sm:inline-flex"><ChalkboardTeacherIcon size={16} weight="duotone" /></span>}
+              {loading ? "Authenticating..." : isLoginTab ? "Access Sandbox" : "Create & Access"}
+            </span>
           </button>
         </form>
 
@@ -182,7 +190,7 @@ export default function AuthPage() {
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-border" />
           </div>
-          <span className="relative bg-[#1a1c22] px-3 text-[10px] font-extrabold uppercase text-[var(--muted)] z-10">
+          <span className="relative z-10 bg-white px-3 text-[10px] font-semibold uppercase text-[var(--muted)]">
             Or Bypass Mode
           </span>
         </div>
@@ -191,15 +199,15 @@ export default function AuthPage() {
         <div className="space-y-3">
           <button
             onClick={() => loginAsGuest("guest_student")}
-            className="w-full py-3 bg-[var(--surface-light)] hover:bg-[var(--surface)] text-[var(--foreground)] hover:text-[var(--primary-text)] font-extrabold text-xs pixel-border flex items-center justify-center gap-2 transition-all active:translate-y-[1px]"
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-light)] py-3 text-xs font-semibold text-[var(--foreground)] transition-all hover:text-[var(--primary-text)]"
           >
-            <span>🎓</span> Enter immediately as Guest Student
+            <StudentIcon size={18} weight="duotone" /> Enter immediately as Guest Student
           </button>
           <button
             onClick={() => loginAsGuest("guest_teacher")}
-            className="w-full py-3 bg-[var(--surface-light)] hover:bg-[var(--surface)] text-[var(--foreground)] hover:text-[var(--primary-text)] font-extrabold text-xs pixel-border flex items-center justify-center gap-2 transition-all active:translate-y-[1px]"
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-light)] py-3 text-xs font-semibold text-[var(--foreground)] transition-all hover:text-[var(--primary-text)]"
           >
-            <span>👨‍🏫</span> Enter immediately as Guest Teacher
+            <ChalkboardTeacherIcon size={18} weight="duotone" /> Enter immediately as Guest Teacher
           </button>
         </div>
 
