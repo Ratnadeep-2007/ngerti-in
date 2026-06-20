@@ -9,10 +9,34 @@ function getClient() {
 
 export async function POST(req: Request) {
   try {
-    const { messages, summaryContext, transcriptContext } = await req.json();
+    const body = await req.json();
+    const { messages, summaryMarkdown, transcript, videoTitle } = body;
+    let { summaryContext, transcriptContext } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Invalid messages provided" }, { status: 400 });
+    }
+
+    if (summaryMarkdown && !summaryContext) {
+      summaryContext = summaryMarkdown;
+    }
+
+    if (transcript && !transcriptContext) {
+      if (Array.isArray(transcript)) {
+        transcriptContext = transcript
+          .map((segment: any) => `[${segment.start}] ${segment.text}`)
+          .join("\n");
+      }
+    }
+
+    if (!summaryContext) {
+      summaryContext = videoTitle
+        ? `The user watched a video titled: "${videoTitle}"`
+        : "No summary context available.";
+    }
+
+    if (!transcriptContext) {
+      transcriptContext = "";
     }
 
     const client = getClient();
@@ -39,9 +63,10 @@ Answer their questions accurately, clearly, and concisely. Use code blocks if ap
 
     const reply = response.choices[0]?.message?.content || "I couldn't process that.";
 
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply, message: reply });
   } catch (error) {
     console.error("Recap chat error:", error);
     return NextResponse.json({ error: "Failed to fetch response" }, { status: 500 });
   }
 }
+

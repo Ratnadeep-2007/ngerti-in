@@ -14,10 +14,21 @@ export interface ServerLeaderboardEntry {
   avatar: string;
 }
 
+export interface MeetingParticipant {
+  meetingId: string;
+  username: string;
+  role: string;
+  focusScore: number;
+  isDistracted: boolean;
+  joinedAt: string;
+  lastSeen: number;
+}
+
 interface GlobalStore {
   meetings: ServerMeeting[];
   leaderboard: ServerLeaderboardEntry[];
   users: { email: string; username: string }[];
+  participants: MeetingParticipant[];
 }
 
 declare global {
@@ -36,6 +47,7 @@ const store: GlobalStore = globalThis.serverStore ?? {
     { username: "Chris Evans", role: "student", dailyScore: 72, weeklyScore: 75, avatar: "🛡️" },
   ],
   users: [],
+  participants: [],
 };
 
 if (process.env.NODE_ENV !== "production") {
@@ -43,3 +55,4 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export { store };
+

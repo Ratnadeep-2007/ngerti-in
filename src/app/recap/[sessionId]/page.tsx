@@ -47,8 +47,9 @@ export default function RecapDashboardPage() {
         if (data.nextSteps) setNextSteps(data.nextSteps);
       }).catch(console.error).finally(() => setLoadingNextSteps(false));
 
-      // Fetch youtube recommendations
-      fetch(`/api/youtube-recommendations?title=${encodeURIComponent(s.metadata.title)}`)
+      // Fetch YouTube recommendations — pass description built from first transcript segments
+      const descSnippet = transcriptWindow.slice(0, 8).map((seg: { text: string }) => seg.text).join(" ");
+      fetch(`/api/youtube-recommendations?title=${encodeURIComponent(s.metadata.title)}&description=${encodeURIComponent(descSnippet)}`)
         .then(res => res.json()).then(data => {
           if (data.recommendations) setYoutubeRecommendations(data.recommendations);
         }).catch(console.error).finally(() => setLoadingYoutube(false));
@@ -131,26 +132,45 @@ export default function RecapDashboardPage() {
               </div>
             ) : youtubeRecommendations.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {youtubeRecommendations.map(video => (
+                {youtubeRecommendations.map((video: any) => (
                   <a
-                    key={video.id}
-                    href={`https://youtube.com/watch?v=${video.id}`}
+                    key={video.videoId}
+                    href={video.url}
                     target="_blank"
                     rel="noreferrer"
                     className="group flex flex-col bg-surface border border-border rounded-xl overflow-hidden hover:border-primary transition-colors shadow-sm"
                   >
                     <div className="aspect-video relative overflow-hidden bg-surface-light">
-                      <img src={video.thumbnail} alt={video.title} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300" />
+                      <img
+                        src={video.thumbnailUrl}
+                        alt={video.title}
+                        className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-300"
+                      />
                     </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-sm line-clamp-2 leading-snug group-hover:text-primary transition-colors" dangerouslySetInnerHTML={{ __html: video.title }}></h3>
-                      <p className="text-xs text-muted mt-2">{video.channelTitle}</p>
+                    <div className="p-4 space-y-2">
+                      <h3
+                        className="font-semibold text-sm line-clamp-2 leading-snug group-hover:text-primary transition-colors"
+                        dangerouslySetInnerHTML={{ __html: video.title }}
+                      />
+                      <p className="text-xs text-muted">{video.channelTitle}</p>
+                      {video.conceptTags && video.conceptTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {video.conceptTags.slice(0, 4).map((tag: string) => (
+                            <span
+                              key={tag}
+                              className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary-text font-medium border border-primary/20"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </a>
                 ))}
               </div>
             ) : (
-              <p className="text-muted">No recommendations found.</p>
+              <p className="text-muted">No recommendations found. Make sure <code>YOUTUBE_DATA_API_KEY</code> is set in your <code>.env</code>.</p>
             )}
           </section>
         </div>
@@ -162,7 +182,12 @@ export default function RecapDashboardPage() {
               💬 Talk to AI
             </h2>
             <div className="flex-1 min-h-0">
-              <RecapChat summaryContext={summary} transcriptContext={transcriptContextText} />
+              <RecapChat
+                summaryContext={summary}
+                transcriptContext={transcriptContextText}
+                isContextReady={!loadingSummary}
+                sessionTitle={session.metadata.title}
+              />
             </div>
           </div>
         </div>

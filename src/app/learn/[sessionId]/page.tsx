@@ -9,6 +9,7 @@ import QuizPopup, { type QuizResult } from "@/components/quiz/QuizPopup";
 import CursorFollower from "@/components/companion/CursorFollower";
 import SpeechBubble from "@/components/companion/SpeechBubble";
 
+import { toast } from "sonner";
 import { getSession, updateProgress, updateSession, saveFinalQuiz, markFinalQuizPassed } from "@/lib/session";
 import { getCompanion } from "@/lib/companions";
 import { LANGUAGE_REGIONS, isRTL } from "@/lib/languages";
@@ -115,7 +116,20 @@ export default function LearnSessionPage() {
   const router = useRouter();
   const sessionId = typeof params.sessionId === "string" ? params.sessionId : "";
   const { t } = useTranslation();
-  const { start: startFocusTracking, stopAndEvaluate: stopFocusTracking } = useFocusTracker();
+  const { start: startFocusTracking, stopAndEvaluate: stopFocusTracking, isDistracted, stream: cameraStream } = useFocusTracker();
+
+  // ── Distraction toast (throttled — max once per 8 s) ─────────────────────
+  const lastDistractionToastRef = useRef<number>(0);
+  useEffect(() => {
+    if (!isDistracted) return;
+    const now = Date.now();
+    if (now - lastDistractionToastRef.current < 8000) return;
+    lastDistractionToastRef.current = now;
+    toast.warning("👀 Hey! Look at the screen to keep learning.", {
+      id: "distraction-warning",
+      duration: 4000,
+    });
+  }, [isDistracted]);
 
   // ── Session state ─────────────────────────────────────────────────────────
   const [session, setSession] = useState<Session | null>(null);
@@ -845,6 +859,27 @@ export default function LearnSessionPage() {
               <BackIcon />
               <span className="hidden sm:inline">{t("learn.backToMyLearnings")}</span>
             </Link>
+
+            {/* Live camera indicator */}
+            {cameraStream && (
+              <span
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                style={{
+                  background: "rgba(0,184,148,0.12)",
+                  color: "var(--success)",
+                  border: "1px solid rgba(0,184,148,0.28)",
+                }}
+                title="Webcam is active for focus tracking"
+                aria-label="Camera is on"
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ background: "var(--success)" }}
+                  aria-hidden="true"
+                />
+                <span className="hidden sm:inline">Camera on</span>
+              </span>
+            )}
 
             {/* Divider */}
             <div className="w-px h-5 bg-border shrink-0" aria-hidden="true" />
