@@ -41,6 +41,9 @@ export default function ZoomMeetingRoom() {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const screenShareVideoRef = useRef<HTMLVideoElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const micAnalyserRef = useRef<AnalyserNode | null>(null);
+  const micLevelRef = useRef(0);
+  const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
@@ -131,11 +134,31 @@ export default function ZoomMeetingRoom() {
 
   // Heartbeat & Poll participants
   const focusScorePercent = isVideoOn ? Math.round((latestSample?.eyeFocus ?? 0) * 100) : 100;
+  const captureLocalFrame = useCallback(() => {
+    const video = localVideoRef.current;
+    if (!video || !isVideoOn || video.readyState < 2 || video.videoWidth === 0) return undefined;
+
+    const canvas = frameCanvasRef.current ?? document.createElement("canvas");
+    frameCanvasRef.current = canvas;
+    canvas.width = 240;
+    canvas.height = 180;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    return canvas.toDataURL("image/jpeg", 0.48);
+  }, [isVideoOn]);
 
   useEffect(() => {
     if (!isClient || !participantId) return;
 
-    const interval = setInterval(() => {
+    const syncPresence = () => {
+      const videoFrame = captureLocalFrame();
       // Send Heartbeat
       fetch("/api/meetings/participants", {
         method: "POST",
@@ -147,6 +170,10 @@ export default function ZoomMeetingRoom() {
           role: effectiveRole,
           focusScore: focusScorePercent,
           isDistracted: isDistracted && isVideoOn,
+          isMuted,
+          isVideoOn,
+          micLevel: micLevelRef.current,
+          videoFrame,
           action: "heartbeat",
         }),
       }).catch((err) => console.error("Heartbeat error", err));
@@ -163,10 +190,13 @@ export default function ZoomMeetingRoom() {
           }
         })
         .catch((err) => console.error("Error retrieving participant list", err));
-    }, 3000);
+    };
+
+    syncPresence();
+    const interval = setInterval(syncPresence, 1000);
 
     return () => clearInterval(interval);
-  }, [isClient, meetingId, participantId, displayName, effectiveRole, focusScorePercent, isDistracted, isVideoOn]);
+  }, [isClient, meetingId, participantId, displayName, effectiveRole, focusScorePercent, isDistracted, isMuted, isVideoOn, captureLocalFrame]);
 
   // Distraction trigger logs for the teacher dashboard
   const prevDistractedRef = useRef<{ [participantId: string]: boolean }>({});
@@ -197,6 +227,51 @@ export default function ZoomMeetingRoom() {
       localVideoRef.current.srcObject = stream;
     }
   }, [stream, isVideoOn]);
+
+  useEffect(() => {
+    if (!stream) return;
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = !isMuted;
+    });
+    stream.getVideoTracks().forEach((track) => {
+      track.enabled = isVideoOn;
+    });
+  }, [stream, isMuted, isVideoOn]);
+
+  useEffect(() => {
+    if (!stream || typeof window === "undefined") return;
+
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const source = audioCtxRef.current.createMediaStreamSource(stream);
+      const analyser = audioCtxRef.current.createAnalyser();
+      analyser.fftSize = 128;
+      source.connect(analyser);
+      micAnalyserRef.current = analyser;
+    } catch (err) {
+      console.error("Mic analyser failed", err);
+    }
+  }, [stream]);
+
+  useEffect(() => {
+    if (!stream) return;
+
+    const data = new Uint8Array(128);
+    const interval = setInterval(() => {
+      const analyser = micAnalyserRef.current;
+      if (!analyser || isMuted) {
+        micLevelRef.current = 0;
+        return;
+      }
+      analyser.getByteTimeDomainData(data);
+      const volume = data.reduce((sum, value) => sum + Math.abs(value - 128), 0) / data.length;
+      micLevelRef.current = Math.min(100, Math.round(volume * 4));
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [stream, isMuted]);
 
   // Handle focus tracking activation based on isVideoOn
   useEffect(() => {
@@ -437,15 +512,12 @@ export default function ZoomMeetingRoom() {
                   className={`aspect-video bg-[#1a1c22] pixel-border border-gray-800 rounded-xl relative overflow-hidden flex flex-col group ${p.isDistracted ? "ring-4 ring-orange-500 animate-pulse" : ""}`}
                 >
                   <div className="flex-1 bg-[#101216] flex flex-col items-center justify-center relative">
-                    {p.isDistracted ? (
-                      <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-4">
-                        <div className="w-16 h-16 rounded-full bg-orange-950 flex items-center justify-center text-3xl border border-orange-700 animate-bounce mb-2">
-                          ⚠️
-                        </div>
-                        <span className="text-orange-500 font-extrabold text-sm uppercase tracking-wider">
-                          Distracted / Looking Away
-                        </span>
-                      </div>
+                    {p.videoFrame && p.isVideoOn !== false ? (
+                      <img
+                        src={p.videoFrame}
+                        alt={`${p.username} live camera preview`}
+                        className={`h-full w-full object-cover ${p.isDistracted ? "brightness-50" : ""}`}
+                      />
                     ) : (
                       <div className="flex flex-col items-center justify-center text-center p-4">
                         <div className="w-20 h-20 rounded-full bg-gray-800 border-2 border-[var(--primary)] flex items-center justify-center text-3xl mb-3 shadow-[0_0_15px_rgba(108,92,231,0.3)]">
@@ -454,11 +526,31 @@ export default function ZoomMeetingRoom() {
                         <span className="font-bold text-base text-gray-200">
                           {p.username}
                         </span>
-                        <span className="text-xs text-green-400 font-semibold mt-1 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-400" /> Active Focus ({p.focusScore}%)
+                        <span className="text-xs text-gray-400 font-semibold mt-1">
+                          Camera {p.isVideoOn === false ? "off" : "warming up"}
                         </span>
                       </div>
                     )}
+
+                    {p.isDistracted && (
+                      <div className="absolute inset-0 bg-black/55 flex flex-col items-center justify-center text-center p-4">
+                        <div className="rounded bg-black/80 px-3 py-2 border border-orange-700">
+                          <span className="text-orange-400 font-extrabold text-xs uppercase tracking-wider">
+                            Distracted / Looking Away
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="absolute top-3 right-3 flex items-center gap-2 rounded bg-black/75 px-2 py-1 text-[10px] font-bold border border-gray-800">
+                      <span>{p.isMuted ? "Muted" : `Mic ${Math.round(p.micLevel ?? 0)}%`}</span>
+                      <span className={`h-2 w-8 rounded bg-gray-800 overflow-hidden ${p.isMuted ? "opacity-50" : ""}`}>
+                        <span
+                          className="block h-full bg-green-500 transition-all"
+                          style={{ width: `${Math.min(100, Math.max(0, p.micLevel ?? 0))}%` }}
+                        />
+                      </span>
+                    </div>
                   </div>
 
                   {/* Label */}

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Play, X, Trash } from "@phosphor-icons/react";
-import Link from "next/link";
 import { useTranslation } from "@/contexts/UILanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { LeaderboardEntry } from "@/lib/leaderboard";
@@ -127,6 +126,14 @@ export default function MyLearningsPage() {
     setSessions(updated);
   }
 
+  const joinMeeting = (meetingId: string) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`lumina_accepted_invite_${meetingId}`, "true");
+    }
+    const role = user?.role === "teacher" || user?.role === "guest_teacher" ? "teacher" : "student";
+    router.push(`/zoom/${meetingId}?role=${role}`);
+  };
+
   const ongoing = sessions.filter((s) => s.status !== "completed");
   const completed = sessions.filter((s) => s.status === "completed");
 
@@ -241,11 +248,12 @@ export default function MyLearningsPage() {
 
                     <div className="mt-3 sm:mt-0 flex gap-2">
                       {meeting.active ? (
-                        <Link href={`/zoom/${meeting.id}?role=student`}>
-                          <button className="w-full sm:w-auto bg-[var(--success)] hover:bg-[var(--success-dark)] text-white font-extrabold text-sm px-6 py-2.5 pixel-border transition-all active:translate-y-[1px]">
-                            Join Meeting
-                          </button>
-                        </Link>
+                        <button
+                          onClick={() => joinMeeting(meeting.id)}
+                          className="w-full sm:w-auto bg-[var(--success)] hover:bg-[var(--success-dark)] text-white font-extrabold text-sm px-6 py-2.5 pixel-border transition-all active:translate-y-[1px]"
+                        >
+                          Join Meeting
+                        </button>
                       ) : (
                         <span className="text-xs font-semibold text-[var(--muted)] py-2.5 px-4 bg-black/20 pixel-border border-gray-800">
                           Class Completed

@@ -465,10 +465,23 @@ export function useFocusTracker() {
     restoreConsoleRef.current = installMediaPipeBannerFilter();
 
     try {
-      const cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480, facingMode: "user" },
-        audio: false,
-      });
+      let cameraStream: MediaStream;
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" },
+          audio: false,
+        });
+        toast.warning("Mic unavailable. Camera tracking is still active.");
+      }
       permissionRef.current = "granted";
       streamRef.current = cameraStream;
       setPreviewStream(cameraStream);

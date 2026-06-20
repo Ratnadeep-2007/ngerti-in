@@ -21,6 +21,10 @@ export interface MeetingParticipant {
   role: string;
   focusScore: number;
   isDistracted: boolean;
+  isMuted?: boolean;
+  isVideoOn?: boolean;
+  micLevel?: number;
+  videoFrame?: string;
   joinedAt: string;
   lastSeen: number;
 }

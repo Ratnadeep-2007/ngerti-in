@@ -32,7 +32,19 @@ export async function POST(request: Request) {
     cleanupStaleParticipants();
 
     const body = await request.json();
-    const { meetingId, participantId, username, role, focusScore, isDistracted, action } = body;
+    const {
+      meetingId,
+      participantId,
+      username,
+      role,
+      focusScore,
+      isDistracted,
+      isMuted,
+      isVideoOn,
+      micLevel,
+      videoFrame,
+      action,
+    } = body;
 
     if (!meetingId || !username || !action) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -58,6 +70,10 @@ export async function POST(request: Request) {
         role,
         focusScore: focusScore ?? 100,
         isDistracted: !!isDistracted,
+        isMuted: !!isMuted,
+        isVideoOn: isVideoOn !== false,
+        micLevel: typeof micLevel === "number" ? micLevel : 0,
+        videoFrame: typeof videoFrame === "string" ? videoFrame : undefined,
         joinedAt: new Date().toISOString(),
         lastSeen: Date.now(),
       };
@@ -70,6 +86,10 @@ export async function POST(request: Request) {
         p.lastSeen = Date.now();
         if (typeof focusScore === "number") p.focusScore = focusScore;
         if (typeof isDistracted === "boolean") p.isDistracted = isDistracted;
+        if (typeof isMuted === "boolean") p.isMuted = isMuted;
+        if (typeof isVideoOn === "boolean") p.isVideoOn = isVideoOn;
+        if (typeof micLevel === "number") p.micLevel = micLevel;
+        if (typeof videoFrame === "string") p.videoFrame = videoFrame;
       } else {
         // If not found (e.g. server restarted or expired), treat it as a join
         const newParticipant: MeetingParticipant = {
@@ -79,6 +99,10 @@ export async function POST(request: Request) {
           role,
           focusScore: focusScore ?? 100,
           isDistracted: !!isDistracted,
+          isMuted: !!isMuted,
+          isVideoOn: isVideoOn !== false,
+          micLevel: typeof micLevel === "number" ? micLevel : 0,
+          videoFrame: typeof videoFrame === "string" ? videoFrame : undefined,
           joinedAt: new Date().toISOString(),
           lastSeen: Date.now(),
         };
